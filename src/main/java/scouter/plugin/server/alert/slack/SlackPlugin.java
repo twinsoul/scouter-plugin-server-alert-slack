@@ -18,7 +18,13 @@
  */
 package scouter.plugin.server.alert.slack;
 
-import com.google.gson.Gson;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpPost;
@@ -26,6 +32,9 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+
+import com.google.gson.Gson;
+
 import scouter.lang.AlertLevel;
 import scouter.lang.TextTypes;
 import scouter.lang.TimeTypeEnum;
@@ -46,13 +55,6 @@ import scouter.server.db.TextRD;
 import scouter.server.netio.AgentCall;
 import scouter.util.DateUtil;
 import scouter.util.HashUtil;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Scouter server plugin to send alert via Slack
@@ -122,10 +124,9 @@ public class SlackPlugin {
 
 	@ServerPlugin(PluginConstants.PLUGIN_SERVER_ALERT)
 	public void alert(final AlertPack pack) {
-		// Slack 메시지 발송 여부 (true / false) - 기본 값은 false
 		if (groupConf.getBoolean("ext_plugin_slack_send_alert", pack.objType, false)) {
 
-			// 수신 레벨(0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL) - 기본 값은 0
+			// 수신 레벨(0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL)
 			int level = groupConf.getInt("ext_plugin_slack_level", pack.objType, 0);
 
 			// Get log level (0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL)
@@ -215,6 +216,8 @@ public class SlackPlugin {
 			return;
 		}
 
+		println("object: [" + pack.version + "] " + pack.toString());
+
 		if (pack.version != null && pack.version.length() > 0) {
 			AlertPack ap = null;
 			ObjectPack op = AgentManager.getAgent(pack.objHash);
@@ -286,8 +289,7 @@ public class SlackPlugin {
 					ap.level = AlertLevel.WARN;
 					ap.objHash = pack.objHash;
 					ap.title = "Elapsed time exceed a threshold.";
-					ap.message = "[" + AgentManager.getAgentName(pack.objHash) + "] "
-							+ pack.service + "(" + serviceName + ") "
+					ap.message = "(" + serviceName + ") "
 							+ "elapsed time(" + pack.elapsed + " ms) exceed a threshold.";
 					ap.time = System.currentTimeMillis();
 					ap.objType = objType;
