@@ -60,24 +60,26 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Se-Wang Lee(ssamzie101@gmail.com) on 2016. 5. 2.
  */
 public class SlackPlugin {
-	
+
 	final Configure conf = Configure.getInstance();
-	
+
 	private final MonitoringGroupConfigure groupConf;
-	
-    private static AtomicInteger ai = new AtomicInteger(0);
-    private static List<Integer> javaeeObjHashList = new ArrayList<Integer>();
 
-    public SlackPlugin() {
-    	groupConf = new MonitoringGroupConfigure(conf);
-    	
-    	if (ai.incrementAndGet() == 1) {
-	    	ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+	private static AtomicInteger ai = new AtomicInteger(0);
+	private static List<Integer> javaeeObjHashList = new ArrayList<Integer>();
 
-	    	// thread count check
-	    	executor.scheduleAtFixedRate(new Runnable() {
+	public SlackPlugin() {
+		groupConf = new MonitoringGroupConfigure(conf);
+
+		// 5초마다 실행
+		if (ai.incrementAndGet() == 1) {
+			ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+
+			// thread count check
+			executor.scheduleAtFixedRate(new Runnable() {
 				@Override
 				public void run() {
+					// Thread Count의 임계치 - 기본 값 0일때 Thread Count의 임계치 초과 여부를 확인하지 않는다.
 					if (conf.getInt("ext_plugin_thread_count_threshold", 0) == 0) {
 						return;
 					}
@@ -86,45 +88,51 @@ public class SlackPlugin {
 							if (AgentManager.isActive(objHash)) {
 								ObjectPack objectPack = AgentManager.getAgent(objHash);
 								MapPack mapPack = new MapPack();
-				            	mapPack.put("objHash", objHash);
+								mapPack.put("objHash", objHash);
 
 								mapPack = AgentCall.call(objectPack, RequestCmd.OBJECT_THREAD_LIST, mapPack);
 
-				        		int threadCountThreshold = groupConf.getInt("ext_plugin_thread_count_threshold", objectPack.objType, 0);
-				        		int threadCount = mapPack.getList("name").size();
+								// Thread Count의 임계치
+								int threadCountThreshold = groupConf.getInt("ext_plugin_thread_count_threshold",
+										objectPack.objType, 0);
+								int threadCount = mapPack.getList("name").size();
 
-				        		if (threadCountThreshold != 0 && threadCount > threadCountThreshold) {
-				        			AlertPack ap = new AlertPack();
+								if (threadCountThreshold != 0 && threadCount > threadCountThreshold) {
+									AlertPack ap = new AlertPack();
 
-				    		        ap.level = AlertLevel.WARN;
-				    		        ap.objHash = objHash;
-				    		        ap.title = "Thread count exceed a threshold.";
-				    		        ap.message = objectPack.objName + "'s Thread count(" + threadCount + ") exceed a threshold.";
-				    		        ap.time = System.currentTimeMillis();
-				    		        ap.objType = objectPack.objType;
+									ap.level = AlertLevel.WARN;
+									ap.objHash = objHash;
+									ap.title = "Thread count exceed a threshold.";
+									ap.message = objectPack.objName + "'s Thread count(" + threadCount
+											+ ") exceed a threshold.";
+									ap.time = System.currentTimeMillis();
+									ap.objType = objectPack.objType;
 
-				    		        alert(ap);
-				        		}
+									alert(ap);
+								}
 							}
 						} catch (Exception e) {
 							// ignore
 						}
 					}
 				}
-	    	},
-	    	0, 5, TimeUnit.SECONDS);
-    	}
+			}, 0, 5, TimeUnit.SECONDS);
+		}
 	}
 
 	@ServerPlugin(PluginConstants.PLUGIN_SERVER_ALERT)
-	public void alert(final AlertPack pack){
+	public void alert(final AlertPack pack) {
+		// Slack 메시지 발송 여부 (true / false) - 기본 값은 false
 		if (groupConf.getBoolean("ext_plugin_slack_send_alert", pack.objType, false)) {
+
+			// 수신 레벨(0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL) - 기본 값은 0
 			int level = groupConf.getInt("ext_plugin_slack_level", pack.objType, 0);
+
 			// Get log level (0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL)
-			if(level <= pack.level){
-				new Thread(){
-					public void run(){
-						try{
+			if (level <= pack.level) {
+				new Thread() {
+					public void run() {
+						try {
 							String webhookURL = groupConf.getValue("ext_plugin_slack_webhook_url", pack.objType);
 							String channel = groupConf.getValue("ext_plugin_slack_channel", pack.objType);
 							String botName = groupConf.getValue("ext_plugin_slack_botName", pack.objType);
@@ -134,62 +142,64 @@ public class SlackPlugin {
 							assert webhookURL != null;
 
 							// Get the agent Name
-            	String name = AgentManager.getAgentName(pack.objHash) == null ? "N/A" : AgentManager.getAgentName(pack.objHash);
+							String name = AgentManager.getAgentName(pack.objHash) == null ? "N/A"
+									: AgentManager.getAgentName(pack.objHash);
 
-            	if (name.equals("N/A") && pack.message.endsWith("connected.")) {
-        			int idx = pack.message.indexOf("connected");
-            		if (pack.message.indexOf("reconnected") > -1) {
-            			name = pack.message.substring(0, idx - 6);
-            		} else {
-            			name = pack.message.substring(0, idx - 4);
-            		}
-            	}
+							if (name.equals("N/A") && pack.message.endsWith("connected.")) {
+								int idx = pack.message.indexOf("connected");
+								if (pack.message.indexOf("reconnected") > -1) {
+									name = pack.message.substring(0, idx - 6);
+								} else {
+									name = pack.message.substring(0, idx - 4);
+								}
+							}
 
-            	String title = pack.title;
-                String msg = pack.message;
-                if (title.equals("INACTIVE_OBJECT")) {
-                	title = "An object has been inactivated.";
-                	msg = pack.message.substring(0, pack.message.indexOf("OBJECT") - 1);
-                }
+							String title = pack.title;
+							String msg = pack.message;
+							if (title.equals("INACTIVE_OBJECT")) {
+								title = "An object has been inactivated.";
+								msg = pack.message.substring(0, pack.message.indexOf("OBJECT") - 1);
+							}
 
-            	// Make message contents
-                String contents = "[TYPE] : " + pack.objType.toUpperCase() + "\n" +
-                               	  "[NAME] : " + name + "\n" +
-                                  "[LEVEL] : " + AlertLevel.getName(pack.level) + "\n" +
-                                  "[TITLE] : " + title + "\n" +
-                                  "[MESSAGE] : " + msg;
+							// Make message contents
+							String contents = "[TYPE] : " + pack.objType.toUpperCase() + "\n" +
+									"[NAME] : " + name + "\n" +
+									"[LEVEL] : " + AlertLevel.getName(pack.level) + "\n" +
+									"[TITLE] : " + title + "\n" +
+									"[MESSAGE] : " + msg;
 
-                Message message = new Message(contents, channel, botName, iconURL, iconEmoji);
-                String payload = new Gson().toJson(message);
+							Message message = new Message(contents, channel, botName, iconURL, iconEmoji);
+							String payload = new Gson().toJson(message);
 
-                if(groupConf.getBoolean("ext_plugin_slack_debug", pack.objType, false)){
-                	println("WebHookURL : "+webhookURL);
-                	println("param : "+payload);
-                }
+							// 로깅 여부 - 기본 값은 false
+							if (groupConf.getBoolean("ext_plugin_slack_debug", pack.objType, false)) {
+								println("WebHookURL : " + webhookURL);
+								println("param : " + payload);
+							}
 
-                HttpPost post = new HttpPost(webhookURL);
-                post.addHeader("Content-Type","application/json");
-								// charset set utf-8
-								post.setEntity(new StringEntity(payload, "utf-8"));
+							HttpPost post = new HttpPost(webhookURL);
+							post.addHeader("Content-Type", "application/json");
+							// charset set utf-8
+							post.setEntity(new StringEntity(payload, "utf-8"));
 
-                CloseableHttpClient client = HttpClientBuilder.create().build();
+							CloseableHttpClient client = HttpClientBuilder.create().build();
 
-                // send the post request
-                HttpResponse response = client.execute(post);
+							// send the post request
+							HttpResponse response = client.execute(post);
 
-                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-                    println("Slack message sent to [" + channel + "] successfully.");
-                } else {
-                    println("Slack message sent failed. Verify below information.");
-                    println("[WebHookURL] : " + webhookURL);
-                    println("[Message] : " + payload);
-                    println("[Reason] : " + EntityUtils.toString(response.getEntity(), "UTF-8"));
-                }
-						}catch(Exception e){
+							if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+								println("Slack message sent to [" + channel + "] successfully.");
+							} else {
+								println("Slack message sent failed. Verify below information.");
+								println("[WebHookURL] : " + webhookURL);
+								println("[Message] : " + payload);
+								println("[Reason] : " + EntityUtils.toString(response.getEntity(), "UTF-8"));
+							}
+						} catch (Exception e) {
 							println("[Error] : " + e.getMessage());
-            	if(conf._trace) {
-                    e.printStackTrace();
-            	}
+							if (conf._trace) {
+								e.printStackTrace();
+							}
 						}
 					}
 
@@ -197,9 +207,10 @@ public class SlackPlugin {
 			}
 		}
 	}
-	
+
 	@ServerPlugin(PluginConstants.PLUGIN_SERVER_OBJECT)
-	public void object(ObjectPack pack){
+	public void object(ObjectPack pack) {
+		// object active/dead alert - default : false
 		if (!conf.getBoolean("ext_plugin_slack_object_alert_enabled", false)) {
 			return;
 		}
@@ -211,37 +222,38 @@ public class SlackPlugin {
 			if (op == null && pack.wakeup == 0L) {
 				// in case of new agent connected
 				ap = new AlertPack();
-		        ap.level = AlertLevel.INFO;
-		        ap.objHash = pack.objHash;
-		        ap.title = "An object has been activated.";
-		        ap.message = pack.objName + " is connected.";
-		        ap.time = System.currentTimeMillis();
+				ap.level = AlertLevel.INFO;
+				ap.objHash = pack.objHash;
+				ap.title = "An object has been activated.";
+				ap.message = pack.objName + " is connected.";
+				ap.time = System.currentTimeMillis();
 
-		        if (AgentManager.getAgent(pack.objHash) != null) {
-		        	ap.objType = AgentManager.getAgent(pack.objHash).objType;
-		        } else {
-		        	ap.objType = "scouter";
-		        }
+				if (AgentManager.getAgent(pack.objHash) != null) {
+					ap.objType = AgentManager.getAgent(pack.objHash).objType;
+				} else {
+					ap.objType = "scouter";
+				}
 
-		        alert(ap);
-	    	} else if (op.alive == false) {
+				alert(ap);
+			} else if (op.alive == false) {
 				// in case of agent reconnected
 				ap = new AlertPack();
-		        ap.level = AlertLevel.INFO;
-		        ap.objHash = pack.objHash;
-		        ap.title = "An object has been activated.";
-		        ap.message = pack.objName + " is reconnected.";
-		        ap.time = System.currentTimeMillis();
-		        ap.objType = AgentManager.getAgent(pack.objHash).objType;
+				ap.level = AlertLevel.INFO;
+				ap.objHash = pack.objHash;
+				ap.title = "An object has been activated.";
+				ap.message = pack.objName + " is reconnected.";
+				ap.time = System.currentTimeMillis();
+				ap.objType = AgentManager.getAgent(pack.objHash).objType;
 
-		        alert(ap);
-	    	}
+				alert(ap);
+			}
 			// inactive state can be handled in alert() method.
-    	}
+		}
 	}
 
 	@ServerPlugin(PluginConstants.PLUGIN_SERVER_XLOG)
 	public void xlog(XLogPack pack) {
+		// xlog maasege send - default : false
 		if (!conf.getBoolean("ext_plugin_slack_xlog_enabled", false)) {
 			return;
 		}
@@ -262,24 +274,26 @@ public class SlackPlugin {
 			}
 
 			try {
-					int elapsedThreshold = groupConf.getInt("ext_plugin_elapsed_time_threshold", objType, 0);
-					
-					if (elapsedThreshold != 0 && pack.elapsed > elapsedThreshold) {
-						String serviceName = TextRD.getString(DateUtil.yyyymmdd(pack.endTime), TextTypes.SERVICE, pack.service);
+				// 응답시간의 임계치 (ms) - 기본 값 0일때 응답시간의 임계치 초과 여부를 확인하지 않는다.
+				int elapsedThreshold = groupConf.getInt("ext_plugin_elapsed_time_threshold", objType, 0);
 
-						AlertPack ap = new AlertPack();
+				if (elapsedThreshold != 0 && pack.elapsed > elapsedThreshold) {
+					String serviceName = TextRD.getString(DateUtil.yyyymmdd(pack.endTime), TextTypes.SERVICE,
+							pack.service);
 
-							ap.level = AlertLevel.WARN;
-							ap.objHash = pack.objHash;
-							ap.title = "Elapsed time exceed a threshold.";
-							ap.message = "[" + AgentManager.getAgentName(pack.objHash) + "] "
-											+ pack.service + "(" + serviceName + ") "
-											+ "elapsed time(" + pack.elapsed + " ms) exceed a threshold.";
-							ap.time = System.currentTimeMillis();
-							ap.objType = objType;
+					AlertPack ap = new AlertPack();
 
-							alert(ap);
-					}
+					ap.level = AlertLevel.WARN;
+					ap.objHash = pack.objHash;
+					ap.title = "Elapsed time exceed a threshold.";
+					ap.message = "[" + AgentManager.getAgentName(pack.objHash) + "] "
+							+ pack.service + "(" + serviceName + ") "
+							+ "elapsed time(" + pack.elapsed + " ms) exceed a threshold.";
+					ap.time = System.currentTimeMillis();
+					ap.objType = objType;
+
+					alert(ap);
+				}
 
 			} catch (Exception e) {
 				Logger.printStackTrace(e);
@@ -287,55 +301,55 @@ public class SlackPlugin {
 		}
 	}
 
+	@ServerPlugin(PluginConstants.PLUGIN_SERVER_COUNTER)
+	public void counter(PerfCounterPack pack) {
+		String objName = pack.objName;
+		int objHash = HashUtil.hash(objName);
+		String objType = null;
+		String objFamily = null;
 
-@ServerPlugin(PluginConstants.PLUGIN_SERVER_COUNTER)
-  public void counter(PerfCounterPack pack) {
-      String objName = pack.objName;
-      int objHash = HashUtil.hash(objName);
-      String objType = null;
-      String objFamily = null;
+		if (AgentManager.getAgent(objHash) != null) {
+			objType = AgentManager.getAgent(objHash).objType;
+		}
 
-      if (AgentManager.getAgent(objHash) != null) {
-      	objType = AgentManager.getAgent(objHash).objType;
-      }
+		if (objType != null) {
+			objFamily = CounterManager.getInstance().getCounterEngine().getObjectType(objType).getFamily().getName();
+		}
 
-      if (objType != null) {
-      	objFamily = CounterManager.getInstance().getCounterEngine().getObjectType(objType).getFamily().getName();
-      }
+		try {
+			// in case of objFamily is javaee
+			if (CounterConstants.FAMILY_JAVAEE.equals(objFamily)) {
+				// save javaee type's objHash
+				if (!javaeeObjHashList.contains(objHash)) {
+					javaeeObjHashList.add(objHash);
+				}
 
-      try {
-        // in case of objFamily is javaee
-        if (CounterConstants.FAMILY_JAVAEE.equals(objFamily)) {
-        	// save javaee type's objHash
-        	if (!javaeeObjHashList.contains(objHash)) {
-        		javaeeObjHashList.add(objHash);
-        	}
+				if (pack.timetype == TimeTypeEnum.REALTIME) {
+					// GC Time의 임계치 (ms) - 기본 값 0일때 GC Time의 임계치 초과 여부를 확인하지 않는다.
+					long gcTimeThreshold = groupConf.getLong("ext_plugin_gc_time_threshold", objType, 0);
+					long gcTime = pack.data.getLong(CounterConstants.JAVA_GC_TIME);
 
-        	if (pack.timetype == TimeTypeEnum.REALTIME) {
-        		long gcTimeThreshold = groupConf.getLong("ext_plugin_gc_time_threshold", objType, 0);
-        		long gcTime = pack.data.getLong(CounterConstants.JAVA_GC_TIME);
+					if (gcTimeThreshold != 0 && gcTime > gcTimeThreshold) {
+						AlertPack ap = new AlertPack();
 
-        		if (gcTimeThreshold != 0 && gcTime > gcTimeThreshold) {
-        			AlertPack ap = new AlertPack();
+						ap.level = AlertLevel.WARN;
+						ap.objHash = objHash;
+						ap.title = "GC time exceed a threshold.";
+						ap.message = objName + "'s GC time(" + gcTime + " ms) exceed a threshold.";
+						ap.time = System.currentTimeMillis();
+						ap.objType = objType;
 
-    		        ap.level = AlertLevel.WARN;
-    		        ap.objHash = objHash;
-    		        ap.title = "GC time exceed a threshold.";
-    		        ap.message = objName + "'s GC time(" + gcTime + " ms) exceed a threshold.";
-    		        ap.time = System.currentTimeMillis();
-    		        ap.objType = objType;
+						alert(ap);
+					}
+				}
+			}
+		} catch (Exception e) {
+			Logger.printStackTrace(e);
+		}
+	}
 
-    		        alert(ap);
-        		}
-        	}
-    	}
-      } catch (Exception e) {
-		Logger.printStackTrace(e);
-      }
-  }
-
-	private void println(Object o){
-		if(conf.getBoolean("ext_plugin_slack_debug", false)){
+	private void println(Object o) {
+		if (conf.getBoolean("ext_plugin_slack_debug", false)) {
 			System.out.println(o);
 			Logger.println(o);
 		}
