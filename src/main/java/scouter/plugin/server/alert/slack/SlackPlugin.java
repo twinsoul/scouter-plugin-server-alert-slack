@@ -249,22 +249,20 @@ public class SlackPlugin {
 							// charset set utf-8
 							post.setEntity(new StringEntity(payload, "utf-8"));
 
-							/*
-							 * CloseableHttpClient client = HttpClientBuilder.create().build();
-							 * 
-							 * // send the post request
-							 * 
-							 * HttpResponse response = client.execute(post);
-							 * 
-							 * if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-							 * println("Slack message sent to [" + channel + "] successfully.");
-							 * } else {
-							 * println("Slack message sent failed. Verify below information.");
-							 * println("[WebHookURL] : " + webhookURL);
-							 * println("[Message] : " + payload);
-							 * println("[Reason] : " + EntityUtils.toString(response.getEntity(), "UTF-8"));
-							 * }
-							 */
+							CloseableHttpClient client = HttpClientBuilder.create().build();
+
+							// send the post request
+							HttpResponse response = client.execute(post);
+
+							if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+								println("Slack message sent to [" + channel + "] successfully.");
+							} else {
+								println("Slack message sent failed. Verify below information.");
+								println("[WebHookURL] : " + webhookURL);
+								println("[Message] : " + payload);
+								println("[Reason] : " + EntityUtils.toString(response.getEntity(), "UTF-8"));
+							}
+
 						} catch (Exception e) {
 							println("[Error] : " + e.getMessage());
 							if (conf._trace) {
@@ -515,6 +513,8 @@ public class SlackPlugin {
 					if (gcTimeThreshold != 0 && gcTime > gcTimeThreshold) {
 						int historyCount = 0;
 						byte alertLevel = AlertLevel.INFO;
+						String message = objName + "'s GC time(" + FormatUtil.print(gcTime, "#,##0")
+								+ " ms) exceed a threshold.";
 
 						// save javaee type's objHash
 						String alertPattern = objHash + "_" + CounterConstants.JAVA_GC_TIME;
@@ -528,6 +528,8 @@ public class SlackPlugin {
 							AlertHistory alertHistory = alertHistoryLinkedMap.get(alertPattern);
 							long diff = System.currentTimeMillis() - alertHistory.getLastModified();
 							int gcTimeInterval = conf.getInt("ext_plugin_gc_time_interval", GC_TIME_INTERVAL);
+
+							println("gcTimeInterval : " + gcTimeInterval);
 
 							if (diff < gcTimeInterval * 60 * 1000L) {
 								historyCount = alertHistory.addCount();
@@ -551,6 +553,9 @@ public class SlackPlugin {
 											+ " ms) => Ok alert !!! (history: " + historyCount + ", diff: "
 											+ FormatUtil.print(diff, "#,##0")
 											+ " ms)");
+
+									message = objName + "'s GC time(" + FormatUtil.print(gcTime, "#,##0")
+											+ " ms) exceed a threshold. (+" + historyCount + ")";
 								} else {
 									// 마지막 이벤트로부터 기준시간을 경과한 경우
 									alertHistoryLinkedMap.put(alertPattern,
@@ -570,8 +575,7 @@ public class SlackPlugin {
 						ap.level = alertLevel;
 						ap.objHash = objHash;
 						ap.title = "GC time exceed a threshold.";
-						ap.message = objName + "'s GC time(" + FormatUtil.print(gcTime, "#,##0")
-								+ " ms) exceed a threshold.";
+						ap.message = message;
 						ap.time = System.currentTimeMillis();
 						ap.objType = objType;
 
