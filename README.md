@@ -1,67 +1,135 @@
-# scouter-plugin-server-alert-slack
-### Scouter server plugin to send a alert via slack
+# Scouter Plugin Server Alert Slack
 
-- this project inspired by telegram plugin project of noces96. it is very similar.
+## Introduction
+This plugin provides functionality to send Scouter server alerts to Slack channels.
 
-- this project is  scouter server plugin project. this project goal is that send message to slack.
--  this project only support a sort of Alert.
-	- CPU of Agent  (warning / fatal)
-	- Memory of Agent (warning / fatal)
-	- Disk of Agent (warning / fatal)
-	- connected new Agent
-	- disconnected Agent
-	- reconnect Agent
+## Key Features
+- Support for various alert types (Thread Count, Response Time, Error, GC Time)
+- Differentiated handling by alert levels (FATAL, WARN, INFO)
+- Alert history management
+- Slack channel configuration support per monitoring group
 
-### Properties (you can modify in conf/scouter.conf of scouter server home )
-* **_ext\_plugin\_slack\_send\_alert_** : can send slack message or can'not  (true / false) - default : false
-* **_ext\_plugin\_slack\_debug_** : can log message or can't  - default false
-* **_ext\_plugin\_slack\_level_** : log level (0 : INFO, 1 : WARN, 2 : ERROR, 3 : FATAL) - default 0
-* **_ext\_plugin\_slack\_webhook_url_** : Slack WebHook URL
-* **_ext\_plugin\_slack\_channel_** : #Channel or @user_id
-* **_ext\_plugin\_slack\_botName_** : bot name
-* **_ext\_plugin\_slack\_icon\_emoji_** : Slack emoticon  (if  it is existed slack emotion, it will use slack emotion )
-* **_ext\_plugin\_slack\_icon\_url_** : icon image URL
-* **_ext\_plugin\_elapsed\_time\_threshold_** : 응답시간의 임계치 (ms) - 기본 값은 0으로, 0일때 응답시간의 임계치 초과 여부를 확인하지 않는다.
-* **_ext\_plugin\_gc\_time\_threshold_** : GC Time의 임계치 (ms) - 기본 값은 0으로, 0일때 GC Time의 임계치 초과 여부를 확인하지 않는다.
-* **_ext\_plugin\_thread\_count\_threshold_** : Thread Count의 임계치 - 기본 값은 0으로, 0일때 Thread Count의 임계치 초과 여부를 확인하지 않는다.
-* **_ext\_plugin\_slack\_xlog\_enabled_** : xlog message send (true / false) - default : false
-* **_ext_plugin_slack_object_alert_enabled_** : object active/dead alert (true / false) - default : false
-  
-* Example
+## System Architecture
+
+### Core Components
+
+#### AbstractAlertHandler
+- Abstract base class for alert handling
+- Implements common alert logic
+- Defines alert handling patterns for subclasses
+
+#### AlertContext
+- Encapsulates alert-related data
+- Contains all context information needed for alert processing
+
+### Alert Handlers
+
+#### ThreadCountAlertHandler
+- Handles thread count related alerts
+- Threshold: Uses FATAL level when historyCount > 1
+- Monitors thread count increase trends
+
+#### ElapsedTimeAlertHandler
+- Handles response time related alerts
+- Level determination logic:
+  - Determines FATAL/WARN/INFO level based on historyAvg
+  - Skips INFO level alerts
+- Monitors performance degradation situations
+
+#### ErrorAlertHandler
+- Handles error related alerts
+- Always uses ERROR level
+- Uses error message as alert title
+- Includes detailed error information
+
+#### GCTimeAlertHandler
+- Handles GC time related alerts
+- Threshold: Uses FATAL level when historyCount > 0
+- Includes interval logging
+- Monitors GC performance issues
+
+## Configuration
+
+### Basic Setup
+```properties
+# Slack webhook URL configuration
+ext_plugin_slack_webhook_url=https://hooks.slack.com/services/...
+
+# Alert channel configuration
+ext_plugin_slack_channel=#monitoring
+
+# Alert username configuration
+ext_plugin_slack_botName=Scouter
 ```
-# External Interface (Slack)
-ext_plugin_slack_send_alert=true
-ext_plugin_slack_debug=true
-ext_plugin_slack_level=1
-ext_plugin_slack_webhook_url=https://hooks.slack.com/services/T02XXXXX/B159XXXXX/W5CDXXXXXXXXXXXXXXXXXXXX
-ext_plugin_slack_channel=#scouter
-ext_plugin_slack_botName=scouter
-ext_plugin_slack_icon_emoji=:computer:
-ext_plugin_slack_icon_url=http://XXX.XXX.XXX/XXX.gif
-ext_plugin_slack_xlog_enabled=true
-ext_plugin_slack_object_alert_enabled=true
 
-ext_plugin_elapsed_time_threshold=5000
-ext_plugin_gc_time_threshold=5000
-ext_plugin_thread_count_threshold=300
+### Monitoring Group Configuration
+```properties
+# Channel configuration per monitoring group
+ext_plugin_slack_channel_group_a=#group-a-monitoring
+ext_plugin_slack_channel_group_b=#group-b-monitoring
 ```
 
-### Dependencies
-* Project
-    - scouter.common
-    - scouter.server
-* Library
-    - commons-codec-1.9.jar
-    - commons-logging-1.2.jar
-    - gson-2.6.2.jar
-    - httpclient-4.5.2.jar
-    - httpcore-4.4.4.jar
+## Alert Level Characteristics
 
-### Build & Deploy
-* Pre-condition
-    - should set scouter server home  in .bashrc or .zshrc  
-* Build
-    - ant compile
+### FATAL
+- Critical issues requiring immediate action
+- Immediate alert dispatch
+- Includes detailed information
 
-* Deploy
-    - ant dist
+### WARN
+- Situations requiring attention
+- Warns of potential issues
+- Includes basic information
+
+### INFO
+- Reference information
+- Alerts sent only when necessary
+- Includes simple information
+
+## History Management
+- Maintains history for each alert type
+- Used for problem pattern analysis
+- Supports alert deduplication
+
+## Usage Examples
+
+### Thread Count Alert
+```
+[FATAL] Thread Count Alert
+- Instance: OrderService
+- Current Count: 100
+- Threshold: 80
+- History Count: 3
+```
+
+### Response Time Alert
+```
+[WARN] Elapsed Time Alert
+- Instance: PaymentService
+- Current Time: 5000ms
+- Average Time: 4500ms
+- Threshold: 3000ms
+```
+
+### Error Alert
+```
+[ERROR] Exception Alert
+- Instance: UserService
+- Error: NullPointerException
+- Location: UserController.java:150
+- Stack Trace: ...
+```
+
+### GC Time Alert
+```
+[FATAL] GC Time Alert
+- Instance: AuthService
+- Current Time: 500ms
+- Interval: 60s
+- History Count: 2
+```
+
+## Important Notes
+1. Keep Slack webhook URL secure and prevent external exposure
+2. Consider service characteristics when setting alert thresholds
+3. Verify channel names when configuring alert channels

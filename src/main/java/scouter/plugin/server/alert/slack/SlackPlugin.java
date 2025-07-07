@@ -1,4 +1,3 @@
-
 /*
  *  Copyright 2016 Scouter Project.
  *
@@ -78,113 +77,66 @@ public class SlackPlugin {
 	private static final int ELAPSED_TIME_INTERVAL = 5; // (min)
 	private static final int GC_TIME_INTERVAL = 5; // (min)
 
-	public SlackPlugin() {
-		groupConf = new MonitoringGroupConfigure(conf);
+	private final ThreadCountAlertHandler threadCountHandler;
+	private final ElapsedTimeAlertHandler elapsedTimeHandler;
+	private final GCTimeAlertHandler gcTimeHandler;
+	private final ErrorAlertHandler errorHandler;
 
-		// 5초마다 실행
+	public SlackPlugin() {
+		this.groupConf = new MonitoringGroupConfigure(conf);
+		this.threadCountHandler = new ThreadCountAlertHandler(alertHistoryLinkedMap);
+		this.elapsedTimeHandler = new ElapsedTimeAlertHandler(alertHistoryLinkedMap);
+		this.gcTimeHandler = new GCTimeAlertHandler(alertHistoryLinkedMap);
+		this.errorHandler = new ErrorAlertHandler(alertHistoryLinkedMap);
+
+		initializeScheduledTasks();
+	}
+
+	private void initializeScheduledTasks() {
 		if (ai.incrementAndGet() == 1) {
 			ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+			executor.scheduleAtFixedRate(() -> checkThreadCount(), 0, 5, TimeUnit.SECONDS);
+		}
+	}
 
-			// thread count check
-			executor.scheduleAtFixedRate(new Runnable() {
-				@Override
-				public void run() {
-					// Thread Count의 임계치 - 기본 값 0일때 Thread Count의 임계치 초과 여부를 확인하지 않는다.
-					if (conf.getInt("ext_plugin_thread_count_threshold", 0) == 0) {
-						return;
-					}
-					for (int objHash : javaeeObjHashList) {
-						try {
-							if (AgentManager.isActive(objHash)) {
-								ObjectPack objectPack = AgentManager.getAgent(objHash);
-								MapPack mapPack = new MapPack();
-								mapPack.put("objHash", objHash);
+	private void checkThreadCount() {
+		if (conf.getInt("ext_plugin_thread_count_threshold", 0) == 0) {
+			return;
+		}
 
-								mapPack = AgentCall.call(objectPack, RequestCmd.OBJECT_THREAD_LIST, mapPack);
+		for (int objHash : javaeeObjHashList) {
+			try {
+				if (!AgentManager.isActive(objHash)) {
+					continue;
+				}
 
-								// Thread Count 임계치
-								int threadCountThreshold = groupConf.getInt("ext_plugin_thread_count_threshold",
-										objectPack.objType, 0);
-								// 현재 Thread 개수
-								int threadCount = mapPack.getList("name").size();
+				ObjectPack objectPack = AgentManager.getAgent(objHash);
+				MapPack mapPack = new MapPack();
+				mapPack.put("objHash", objHash);
+				mapPack = AgentCall.call(objectPack, RequestCmd.OBJECT_THREAD_LIST, mapPack);
 
-								/**
-								 * 현재 Thread 개수가 임계치를 초과하더라도 알람주기가 도래할 경우에만 alert
-								 */
-								if (threadCountThreshold != 0 && threadCount > threadCountThreshold) {
-									int historyCount = 0;
-									byte alertLevel = AlertLevel.INFO;
-									String message = objectPack.objName + "'s Thread count(" + threadCount
-											+ ") exceed a threshold.";
+				int threadCountThreshold = groupConf.getInt("ext_plugin_thread_count_threshold", objectPack.objType, 0);
+				int threadCount = mapPack.getList("name").size();
 
-									String alertPattern = objHash + "_" + RequestCmd.OBJECT_THREAD_LIST;
-									if (!alertHistoryLinkedMap.containsKey(alertPattern)) {
-										alertHistoryLinkedMap.put(alertPattern,
-												new AlertHistory(System.currentTimeMillis(), 0));
+				if (threadCountThreshold != 0 && threadCount > threadCountThreshold) {
+					AlertContext context = new AlertContext.Builder()
+							.alertPattern(objHash + "_" + RequestCmd.OBJECT_THREAD_LIST)
+							.objName(objectPack.objName)
+							.objType(objectPack.objType)
+							.interval(conf.getInt("ext_plugin_thread_count_interval", THREAD_COUNT_INTERVAL))
+							.metricValue(String.valueOf(threadCount))
+							.threshold(threadCountThreshold)
+							.objHash(objHash)
+							.build();
 
-										println(objectPack.objName + " (" + objectPack.objType
-												+ ") : Thread Count(" + threadCount + ") => Put !!!");
-										return;
-									} else {
-										AlertHistory alertHistory = alertHistoryLinkedMap.get(alertPattern);
-										long diff = System.currentTimeMillis() - alertHistory.getLastModified();
-										int threadCountInterval = conf.getInt("ext_plugin_thread_count_interval",
-												THREAD_COUNT_INTERVAL);
-
-										if (diff < threadCountInterval * 60 * 1000L) {
-											historyCount = alertHistory.addCount();
-											alertHistoryLinkedMap.put(alertPattern, alertHistory);
-
-											println(objectPack.objName + " (" + objectPack.objType
-													+ ") : Thread Count(" + threadCount + ") => Not yet (history: "
-													+ historyCount + ", diff: " + FormatUtil.print(diff, "#,##0")
-													+ " ms)");
-											return;
-										} else {
-											if (diff < threadCountInterval * 60 * 1000L * 2) {
-												historyCount = alertHistory.getHistoryCount();
-												alertLevel = historyCount > 1 ? AlertLevel.FATAL : AlertLevel.INFO;
-												alertHistoryLinkedMap.put(alertPattern,
-														new AlertHistory(System.currentTimeMillis(), 0));
-
-												println(objectPack.objName + " (" + objectPack.objType
-														+ ") : Thread Count(" + threadCount
-														+ ") => Ok alert !!! (history: " + historyCount + ", diff: "
-														+ FormatUtil.print(diff, "#,##0") + " ms)");
-
-												// 발송 메시지 생성
-												message = objectPack.objName + "'s Thread count(" + threadCount
-														+ ") exceed a threshold. (+" + historyCount + ")";
-											} else {
-												// 마지막 이벤트로부터 기준시간을 경과한 경우
-												alertHistoryLinkedMap.put(alertPattern,
-														new AlertHistory(System.currentTimeMillis(), 0));
-
-												println(objectPack.objName + " (" + objectPack.objType
-														+ ") : Thread Count(" + threadCount + ") => Put(reset) !!!");
-												return;
-											}
-										}
-									}
-
-									// 첫번째 이벤트와 알람주기(thread_count_interval)내 이벤트는 alert하지 않고 알람주기가 도래할 경우에만 alert
-									AlertPack ap = new AlertPack();
-									// ap.level = AlertLevel.WARN;
-									ap.level = alertLevel;
-									ap.objHash = objHash;
-									ap.title = "Thread count exceed a threshold.";
-									ap.message = message;
-									ap.time = System.currentTimeMillis();
-									ap.objType = objectPack.objType;
-									alert(ap);
-								}
-							}
-						} catch (Exception e) {
-							// ignore
-						}
+					AlertPack alertPack = threadCountHandler.handleAlert(context);
+					if (alertPack != null) {
+						alert(alertPack);
 					}
 				}
-			}, 0, 5, TimeUnit.SECONDS);
+			} catch (Exception e) {
+				Logger.printStackTrace(e);
+			}
 		}
 	}
 
@@ -320,162 +272,55 @@ public class SlackPlugin {
 
 	@ServerPlugin(PluginConstants.PLUGIN_SERVER_XLOG)
 	public void xlog(XLogPack pack) {
-		// xlog maasege send - default : false
 		if (!conf.getBoolean("ext_plugin_slack_xlog_enabled", false)) {
 			return;
 		}
 
-		String serviceName = TextRD.getString(DateUtil.yyyymmdd(pack.endTime), TextTypes.SERVICE,
-				pack.service);
+		String serviceName = TextRD.getString(DateUtil.yyyymmdd(pack.endTime), TextTypes.SERVICE, pack.service);
 		String objName = TextRD.getString(DateUtil.yyyymmdd(pack.endTime), TextTypes.OBJECT, pack.objHash);
 		String objType = AgentManager.getAgent(pack.objHash) != null ? AgentManager.getAgent(pack.objHash).objType
 				: "scouter";
 
 		if (groupConf.getBoolean("ext_plugin_slack_xlog_enabled", objType, true)) {
+			// Error 처리
 			if (pack.error != 0) {
-				String date = DateUtil.yyyymmdd(pack.endTime);
-				String service = TextRD.getString(date, TextTypes.SERVICE, pack.service);
+				AlertContext context = new AlertContext.Builder()
+						.alertPattern(pack.objHash + "_" + pack.service + "_error")
+						.objName(objName)
+						.objType(objType)
+						.interval(conf.getInt("ext_plugin_error_log_interval", ERROR_LOG_INTERVAL))
+						.metricValue(String.valueOf(pack.error))
+						.service(pack.service)
+						.endTime(pack.endTime)
+						.objHash(pack.objHash)
+						.build();
 
-				int historyCount = 0;
-				String alertPattern = pack.objHash + "_" + pack.service + "_error";
-				String errorMsg = TextRD.getString(date, TextTypes.ERROR, pack.error);
-				String message = service + " - " + errorMsg;
-
-				if (!alertHistoryLinkedMap.containsKey(alertPattern)) {
-					alertHistoryLinkedMap.put(alertPattern, new ErrorHistory(System.currentTimeMillis(), 0));
-
-					println(objName + "(" + objType + ") error (" + service + ") Put !!!");
-				} else {
-					AlertHistory errorService = (ErrorHistory) alertHistoryLinkedMap.get(alertPattern);
-					long diff = System.currentTimeMillis() - errorService.getLastModified();
-					int errorLogInterval = conf.getInt("ext_plugin_error_log_interval", ERROR_LOG_INTERVAL);
-
-					// 알람주기가 도래하지 않으면 alert하지 않는다.
-					if (diff < errorLogInterval * 60 * 1000L) {
-						historyCount = errorService.addCount();
-						alertHistoryLinkedMap.put(alertPattern, errorService);
-
-						println(objName + "(" + objType + ") error (" + service + ") => Not yet (history: "
-								+ historyCount + ", diff: " + FormatUtil.print(diff, "#,##0") + " ms)");
-						return;
-					} else {
-						if (diff < errorLogInterval * 60 * 1000L * 2) {
-							historyCount = errorService.getHistoryCount();
-							alertHistoryLinkedMap.put(alertPattern, new ErrorHistory(System.currentTimeMillis(), 0));
-
-							println(objName + "(" + objType + ") error (" + service
-									+ ") => Ok alert !!! (history: " + historyCount + ", diff: "
-									+ FormatUtil.print(diff, "#,##0") + " ms)");
-
-							message = service + " - " + errorMsg + (historyCount > 0 ? " (+" + historyCount + ")" : "");
-						} else {
-							// 마지막 이벤트로부터 기준시간을 경과한 경우
-							alertHistoryLinkedMap.put(alertPattern, new ErrorHistory(System.currentTimeMillis(), 0));
-
-							println(objName + "(" + objType + ") error (" + service + ") Put(reset) !!!");
-						}
-					}
+				AlertPack alertPack = errorHandler.handleAlert(context);
+				if (alertPack != null) {
+					alert(alertPack);
 				}
-
-				AlertPack ap = new AlertPack();
-				ap.level = AlertLevel.ERROR;
-				ap.objHash = pack.objHash;
-				ap.title = "xlog Error";
-				// ap.title = errorMsg;
-				ap.message = message;
-				ap.time = System.currentTimeMillis();
-				ap.objType = objType;
-				alert(ap);
 			}
 
+			// Elapsed Time 처리
 			try {
-				// 응답시간의 임계치 (ms) - 기본 값 0일때 응답시간의 임계치 초과 여부를 확인하지 않는다.
 				int elapsedThreshold = groupConf.getInt("ext_plugin_elapsed_time_threshold", objType, 0);
-
-				// 응답시간이 임계치를 초과한 경우
 				if (elapsedThreshold != 0 && pack.elapsed > elapsedThreshold) {
+					AlertContext context = new AlertContext.Builder()
+							.alertPattern(pack.objHash + "_" + pack.service + "_elapsed")
+							.objName(objName)
+							.objType(objType)
+							.interval(conf.getInt("ext_plugin_elapsed_time_interval", ELAPSED_TIME_INTERVAL))
+							.metricValue(String.valueOf(pack.elapsed))
+							.serviceName(serviceName)
+							.threshold(elapsedThreshold)
+							.objHash(pack.objHash)
+							.build();
 
-					String message = "(" + serviceName + ") "
-							+ "elapsed time(" + FormatUtil.print(pack.elapsed, "#,##0") + " ms) exceed a threshold.";
-
-					int historyCount = 0;
-					byte alertLevel = AlertLevel.INFO;
-					String alertPattern = pack.objHash + "_" + pack.service + "_elapsed";
-					if (!alertHistoryLinkedMap.containsKey(alertPattern)) {
-						alertHistoryLinkedMap.put(alertPattern,
-								new ElapsedServiceHistory(System.currentTimeMillis(), 0));
-
-						println(objName + "(" + objType + ") elapsed (" + serviceName + ") Put !!! ("
-								+ FormatUtil.print(pack.elapsed, "#,##0") + " ms)");
-						return;
-					} else {
-						AlertHistory elapsedService = (ElapsedServiceHistory) alertHistoryLinkedMap.get(alertPattern);
-						long diff = System.currentTimeMillis() - elapsedService.getLastModified();
-						int elapsedTimeInterval = conf.getInt("ext_plugin_elapsed_time_interval",
-								ELAPSED_TIME_INTERVAL);
-
-						// alert 주기를 초과하지 않으면 alert하지 않는다.
-						if (diff < elapsedTimeInterval * 60 * 1000L) {
-							historyCount = elapsedService.addCount();
-							alertHistoryLinkedMap.put(alertPattern, elapsedService);
-
-							println(objName + "(" + objType + ") elapsed (" + serviceName
-									+ ") => Not yet (history: " + historyCount + ", diff: "
-									+ FormatUtil.print(diff, "#,##0") + " ms)");
-							return;
-						} else {
-							if (diff < elapsedTimeInterval * 60 * 1000L * 2) {
-								historyCount = elapsedService.getHistoryCount();
-								float historyAvg = (float) historyCount
-										/ (elapsedTimeInterval * 60);
-
-								if (historyCount > 0) {
-									if (historyAvg >= (float) conf.getInt("ext_plugin_elapsed_time_avg_threshold", 1)) {
-										alertLevel = AlertLevel.FATAL;
-									} else {
-										alertLevel = AlertLevel.WARN;
-									}
-								} else {
-									alertLevel = AlertLevel.INFO;
-								}
-
-								println(objName + "(" + objType + ") elapsed (" + serviceName
-										+ ") => Ok alert !!! (history: " + historyCount + ", avg: " + historyAvg
-										+ ", diff: " + FormatUtil.print(diff, "#,##0") + " ms)");
-								alertHistoryLinkedMap.put(alertPattern,
-										new ElapsedServiceHistory(System.currentTimeMillis(), 0));
-
-								if (alertLevel == AlertLevel.INFO) {
-									return;
-								}
-
-								message = "(" + serviceName + ") " + "elapsed time("
-										+ FormatUtil.print(pack.elapsed, "#,##0")
-										+ " ms) exceed a threshold."
-										+ (historyCount > 0 ? " (+" + historyCount + ")" : "");
-							} else {
-								// 마지막 이벤트로부터 기준시간을 경과한 경우
-								alertHistoryLinkedMap.put(alertPattern,
-										new ElapsedServiceHistory(System.currentTimeMillis(), 0));
-
-								println(objName + "(" + objType + ") elapsed (" + serviceName
-										+ ") Put(reset) !!! (" + FormatUtil.print(pack.elapsed, "#,##0") + " ms)");
-								return;
-							}
-						}
+					AlertPack alertPack = elapsedTimeHandler.handleAlert(context);
+					if (alertPack != null) {
+						alert(alertPack);
 					}
-
-					AlertPack ap = new AlertPack();
-					// ap.level = AlertLevel.WARN;
-					ap.level = alertLevel;
-					ap.objHash = pack.objHash;
-					ap.title = "Elapsed time exceed a threshold.";
-					ap.message = message;
-					ap.time = System.currentTimeMillis();
-					ap.objType = objType;
-					alert(ap);
 				}
-
 			} catch (Exception e) {
 				Logger.printStackTrace(e);
 			}
@@ -498,88 +343,30 @@ public class SlackPlugin {
 		}
 
 		try {
-			// in case of objFamily is javaee
 			if (CounterConstants.FAMILY_JAVAEE.equals(objFamily)) {
-				// save javaee type's objHash
 				if (!javaeeObjHashList.contains(objHash)) {
 					javaeeObjHashList.add(objHash);
 				}
 
 				if (pack.timetype == TimeTypeEnum.REALTIME) {
-					// GC Time의 임계치 (ms) - 기본 값 0일때 GC Time의 임계치 초과 여부를 확인하지 않는다.
 					long gcTimeThreshold = groupConf.getLong("ext_plugin_gc_time_threshold", objType, 0);
 					long gcTime = pack.data.getLong(CounterConstants.JAVA_GC_TIME);
 
 					if (gcTimeThreshold != 0 && gcTime > gcTimeThreshold) {
-						int historyCount = 0;
-						byte alertLevel = AlertLevel.INFO;
-						String message = objName + "'s GC time(" + FormatUtil.print(gcTime, "#,##0")
-								+ " ms) exceed a threshold.";
+						AlertContext context = new AlertContext.Builder()
+								.alertPattern(objHash + "_" + CounterConstants.JAVA_GC_TIME)
+								.objName(objName)
+								.objType(objType)
+								.interval(conf.getInt("ext_plugin_gc_time_interval", GC_TIME_INTERVAL))
+								.metricValue(String.valueOf(gcTime))
+								.threshold((int) gcTimeThreshold)
+								.objHash(objHash)
+								.build();
 
-						// save javaee type's objHash
-						String alertPattern = objHash + "_" + CounterConstants.JAVA_GC_TIME;
-						if (!alertHistoryLinkedMap.containsKey(alertPattern)) {
-							alertHistoryLinkedMap.put(alertPattern, new AlertHistory(System.currentTimeMillis(), 0));
-
-							println(pack.objName + "(" + objType + ") : GC Time(" + FormatUtil.print(gcTime, "#,##0")
-									+ " ms) => Put !!!");
-							return;
-						} else {
-							AlertHistory alertHistory = alertHistoryLinkedMap.get(alertPattern);
-							long diff = System.currentTimeMillis() - alertHistory.getLastModified();
-							int gcTimeInterval = conf.getInt("ext_plugin_gc_time_interval", GC_TIME_INTERVAL);
-
-							println("gcTimeInterval : " + gcTimeInterval);
-
-							if (diff < gcTimeInterval * 60 * 1000L) {
-								historyCount = alertHistory.addCount();
-								alertHistoryLinkedMap.put(alertPattern, alertHistory);
-
-								println(pack.objName + "(" + objType + ") : GC Time("
-										+ FormatUtil.print(gcTime, "#,##0")
-										+ " ms) => Not yet (history: " + historyCount + ", diff: "
-										+ FormatUtil.print(diff, "#,##0") + " ms)");
-								return;
-							} else {
-								if (diff < gcTimeInterval * 60 * 1000L * 2) {
-									// 알람레벨 조정 : 임계치를 초과한 상태가 지속될 경우에는 WARN, 단발성일 경우 INFO
-									historyCount = alertHistory.getHistoryCount();
-									alertLevel = historyCount > 0 ? AlertLevel.FATAL : AlertLevel.INFO;
-									alertHistoryLinkedMap.put(alertPattern,
-											new AlertHistory(System.currentTimeMillis(), 0));
-
-									println(pack.objName + " (" + objType + ") : GC Time("
-											+ FormatUtil.print(gcTime, "#,##0")
-											+ " ms) => Ok alert !!! (history: " + historyCount + ", diff: "
-											+ FormatUtil.print(diff, "#,##0")
-											+ " ms)");
-
-									message = objName + "'s GC time(" + FormatUtil.print(gcTime, "#,##0")
-											+ " ms) exceed a threshold. (+" + historyCount + ")";
-								} else {
-									// 마지막 이벤트로부터 기준시간을 경과한 경우
-									alertHistoryLinkedMap.put(alertPattern,
-											new AlertHistory(System.currentTimeMillis(), 0));
-
-									println(pack.objName + " (" + objType + ") : GC Time("
-											+ FormatUtil.print(gcTime, "#,##0")
-											+ " ms) => Put(reset) !!!");
-									return;
-								}
-							}
+						AlertPack alertPack = gcTimeHandler.handleAlert(context);
+						if (alertPack != null) {
+							alert(alertPack);
 						}
-
-						AlertPack ap = new AlertPack();
-
-						// ap.level = AlertLevel.WARN;
-						ap.level = alertLevel;
-						ap.objHash = objHash;
-						ap.title = "GC time exceed a threshold.";
-						ap.message = message;
-						ap.time = System.currentTimeMillis();
-						ap.objType = objType;
-
-						alert(ap);
 					}
 				}
 			}

@@ -25,7 +25,7 @@ import com.google.gson.annotations.SerializedName;
  * @author Se-Wang Lee(ssamzie101@gmail.com) on 2016. 5. 2.
  */
 public class Message {
-	
+
 	@SerializedName("text")
 	private String text;
 	@SerializedName("channel")
@@ -36,36 +36,43 @@ public class Message {
 	private String iconEmoji;
 	@SerializedName("icon_url")
 	private String iconURL;
-	
-	public Message(String text, String channel, String botName, String iconURL, String iconEmoji){
+
+	public Message(String text, String channel, String botName, String iconURL, String iconEmoji) {
 		this.text = text;
 		this.channel = channel;
 		this.botName = botName;
 		this.iconURL = iconURL;
 		this.iconEmoji = iconEmoji;
 	}
-	
+
 	public String getText() {
 		return text;
 	}
+
 	public void setText(String text) {
 		this.text = text;
 	}
+
 	public String getChannel() {
 		return channel;
 	}
+
 	public void setChannel(String channel) {
 		this.channel = channel;
 	}
+
 	public String getBotName() {
 		return botName;
 	}
+
 	public void setBotName(String botName) {
 		this.botName = botName;
 	}
+
 	public String getIconURL() {
 		return iconURL;
 	}
+
 	public void setIconURL(String iconURL) {
 		this.iconURL = iconURL;
 	}
