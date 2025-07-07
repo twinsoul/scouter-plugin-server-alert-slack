@@ -13,6 +13,12 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import scouter.server.Configure;
 import scouter.server.Logger;
+import java.util.List;
+import java.util.ArrayList;
+import org.apache.http.NameValuePair;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
@@ -67,25 +73,34 @@ public class WorksAuth {
             String privateKeyPath = conf.getValue("ext_plugin_works_private_key");
 
             // JWT 생성
-            String jwt = createJWT(serviceAccount, privateKeyPath);
+            String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
 
             // Access Token 요청
-            Map<String, String> params = new HashMap<>();
-            params.put("assertion", jwt);
-            params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
-            params.put("client_id", clientId);
-            params.put("client_secret", clientSecret);
-            params.put("scope", "bot bot.message bot.read");
+            // Map<String, String> params = new HashMap<>();
+            // params.put("assertion", jwt);
+            // params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+            // params.put("client_id", clientId);
+            // params.put("client_secret", clientSecret);
+            // params.put("scope", "bot bot.message bot.read");
 
-            String payload = gson.toJson(params);
+            // 요청 파라미터 설정
+            List<NameValuePair> params = new ArrayList<>();
+            params.add(new BasicNameValuePair("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"));
+            params.add(new BasicNameValuePair("client_id", clientId));
+            params.add(new BasicNameValuePair("client_secret", clientSecret));
+            params.add(new BasicNameValuePair("assertion", jwt));
+            params.add(new BasicNameValuePair("scope", "bot bot.message bot.read"));
+
+
+            // String payload = gson.toJson(params);
 
             if (conf.getBoolean("ext_plugin_works_debug", false)) {
-                Logger.println("Auth request payload: " + payload);
+                Logger.println("Auth request payload: " + params);
             }
 
             HttpPost post = new HttpPost(AUTH_API_URL);
             post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-            post.setEntity(new StringEntity(payload, StandardCharsets.UTF_8));
+            post.setEntity(new UrlEncodedFormEntity(params));
 
             try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
                 HttpResponse response = client.execute(post);
@@ -95,8 +110,16 @@ public class WorksAuth {
                     Logger.println("Auth response: " + responseBody);
                 }
 
-                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-                    TokenResponse tokenResponse = gson.fromJson(responseBody, TokenResponse.class);
+                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK || response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+                    // return (String) responseMap.get("access_token");
+                    
+                    TokenResponse tokenResponse = new TokenResponse();
+                    tokenResponse.accessToken = (String) responseMap.get("access_token");
+                    tokenResponse.expiresIn = (long) responseMap.get("expires_in");
+
                     this.accessToken = tokenResponse.accessToken;
                     this.tokenExpiration = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000);
 
@@ -112,7 +135,7 @@ public class WorksAuth {
         }
     }
 
-    private String createJWT(String serviceAccount, String privateKeyPath) throws Exception {
+    private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
         if (conf.getBoolean("ext_plugin_works_debug", false)) {
             Logger.println("Private key path: " + privateKeyPath);
         }
@@ -148,11 +171,11 @@ public class WorksAuth {
             Instant expiration = now.plusSeconds(JWT_EXPIRATION);
 
             return Jwts.builder()
-                    .setIssuer(serviceAccount)
+                    .setIssuer(clientId)
                     .setSubject(serviceAccount)
                     .setIssuedAt(Date.from(now))
                     .setExpiration(Date.from(expiration))
-                    .signWith(SignatureAlgorithm.RS256, privateKey)
+                    .signWith(SignatureAlgorithm.RS256, privateKey)                    
                     .compact();
         } catch (IllegalArgumentException e) {
             Logger.println("Base64 decoding error. Please check the private key format.");
@@ -171,5 +194,18 @@ public class WorksAuth {
 
         @SerializedName("expires_in")
         long expiresIn;
+    }
+
+    private PrivateKey parsePrivateKey(String privateKeyString) throws Exception {
+        // PEM 형식의 개인키에서 헤더/푸터 제거 및 Base64 디코딩
+        String privateKeyPEM = privateKeyString
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replaceAll("\\s", "");
+            
+        byte[] decoded = Base64.getDecoder().decode(privateKeyPEM);
+        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePrivate(spec);
     }
 }
