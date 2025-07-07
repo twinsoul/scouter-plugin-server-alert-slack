@@ -46,6 +46,8 @@ import scouter.lang.pack.XLogPack;
 import scouter.lang.plugin.PluginConstants;
 import scouter.lang.plugin.annotation.ServerPlugin;
 import scouter.net.RequestCmd;
+import scouter.plugin.server.alert.messenger.works.WorksAuth;
+import scouter.plugin.server.alert.messenger.works.WorksBotMessage;
 import scouter.server.Configure;
 import scouter.server.CounterManager;
 import scouter.server.Logger;
@@ -55,7 +57,6 @@ import scouter.server.netio.AgentCall;
 import scouter.util.DateUtil;
 import scouter.util.HashUtil;
 import scouter.util.LinkedMap;
-import scouter.util.FormatUtil;
 
 /**
  * Scouter server plugin to send alert via Slack
@@ -196,23 +197,67 @@ public class SlackPlugin {
 								println("param : " + payload);
 							}
 
-							HttpPost post = new HttpPost(webhookURL);
+							// slack 전송
+							// HttpPost post = new HttpPost(webhookURL);
+							// post.addHeader("Content-Type", "application/json");
+							// // charset set utf-8
+							// post.setEntity(new StringEntity(payload, "utf-8"));
+
+							// CloseableHttpClient client = HttpClientBuilder.create().build();
+
+							// // send the post request
+							// HttpResponse response = client.execute(post);
+
+							// if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+							// println("Slack message sent to [" + channel + "] successfully.");
+							// } else {
+							// println("Slack message sent failed. Verify below information.");
+							// println("[WebHookURL] : " + webhookURL);
+							// println("[Message] : " + payload);
+							// println("[----------------------Reason] : "
+							// + EntityUtils.toString(response.getEntity(), "UTF-8"));
+							// }
+
+							println("--------------------------------");
+
+							// Works 인증 객체 생성 및 토큰 가져오기
+							WorksAuth worksAuth = new WorksAuth(Configure.getInstance());
+							String accessToken = worksAuth.getAccessToken();
+
+							println("accessToken : " + accessToken);
+
+							// 메시지 생성
+							WorksBotMessage worksMessage = new WorksBotMessage();
+							worksMessage.content = new WorksBotMessage.Content();
+							worksMessage.content.type = "text";
+							worksMessage.content.text = contents;
+
+							Gson gson = new Gson();
+							payload = gson.toJson(worksMessage);
+
+							// 디버그 로깅
+							if (conf.getBoolean("ext_plugin_works_debug", false)) {
+								Logger.println("Works Bot Payload: " + payload);
+							}
+
+							// HTTP 요청 설정
+							String apiEndpoint = conf.getValue("ext_plugin_works_api_endpoint", "");
+							HttpPost post = new HttpPost(apiEndpoint);
 							post.addHeader("Content-Type", "application/json");
-							// charset set utf-8
+							post.addHeader("Authorization", "Bearer " + accessToken);
 							post.setEntity(new StringEntity(payload, "utf-8"));
 
-							CloseableHttpClient client = HttpClientBuilder.create().build();
+							// HTTP 요청 실행
+							try (CloseableHttpClient client2 = HttpClientBuilder.create().build()) {
+								HttpResponse response = client2.execute(post);
 
-							// send the post request
-							HttpResponse response = client.execute(post);
-
-							if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-								println("Slack message sent to [" + channel + "] successfully.");
-							} else {
-								println("Slack message sent failed. Verify below information.");
-								println("[WebHookURL] : " + webhookURL);
-								println("[Message] : " + payload);
-								println("[Reason] : " + EntityUtils.toString(response.getEntity(), "UTF-8"));
+								if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK ||
+										response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED) {
+									Logger.println("Works Bot message sent successfully.");
+								} else {
+									Logger.println("Works Bot message sending failed. Response: " +
+											EntityUtils.toString(response.getEntity(), "UTF-8"));
+								}
 							}
 
 						} catch (Exception e) {
