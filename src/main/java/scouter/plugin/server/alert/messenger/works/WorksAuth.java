@@ -64,10 +64,10 @@ public class WorksAuth {
             String clientId = conf.getValue("ext_plugin_works_client_id");
             String clientSecret = conf.getValue("ext_plugin_works_client_secret");
             String serviceAccount = conf.getValue("ext_plugin_works_service_account");
-            String privateKeyStr = conf.getValue("ext_plugin_works_private_key");
+            String privateKeyPath = conf.getValue("ext_plugin_works_private_key");
 
             // JWT 생성
-            String jwt = createJWT(serviceAccount, privateKeyStr);
+            String jwt = createJWT(serviceAccount, privateKeyPath);
 
             // Access Token 요청
             Map<String, String> params = new HashMap<>();
@@ -75,7 +75,7 @@ public class WorksAuth {
             params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
             params.put("client_id", clientId);
             params.put("client_secret", clientSecret);
-            params.put("scope", "bot");
+            params.put("scope", "bot bot.message bot.read");
 
             String payload = gson.toJson(params);
 
@@ -84,7 +84,7 @@ public class WorksAuth {
             }
 
             HttpPost post = new HttpPost(AUTH_API_URL);
-            post.addHeader("Content-Type", "application/json");
+            post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
             post.setEntity(new StringEntity(payload, StandardCharsets.UTF_8));
 
             try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
@@ -112,29 +112,32 @@ public class WorksAuth {
         }
     }
 
-    private String createJWT(String serviceAccount, String privateKeyStr) throws Exception {
+    private String createJWT(String serviceAccount, String privateKeyPath) throws Exception {
         if (conf.getBoolean("ext_plugin_works_debug", false)) {
-            Logger.println("Original private key: " + privateKeyStr);
+            Logger.println("Private key path: " + privateKeyPath);
+        }
+
+        // PEM 파일 읽기
+        String privateKeyContent = new String(java.nio.file.Files.readAllBytes(
+                java.nio.file.Paths.get(privateKeyPath)), StandardCharsets.UTF_8);
+
+        Logger.println("--------------------------------");
+        Logger.println(privateKeyContent);
+        Logger.println("--------------------------------");
+
+        if (conf.getBoolean("ext_plugin_works_debug", false)) {
+            Logger.println("Private key content loaded from file");
         }
 
         // Private Key 문자열 정리
-        privateKeyStr = privateKeyStr
-                .replace("\\n", "\n") // 설정 파일의 \n을 실제 개행문자로 변환
+        privateKeyContent = privateKeyContent
                 .replace("-----BEGIN PRIVATE KEY-----", "")
                 .replace("-----END PRIVATE KEY-----", "")
                 .replaceAll("\\s+", ""); // 모든 공백 문자 제거
 
-        if (conf.getBoolean("ext_plugin_works_debug", false)) {
-            Logger.println("Cleaned private key: " + privateKeyStr);
-        }
-
-        Logger.println("--------------------------------");
-        Logger.println(privateKeyStr);
-        Logger.println("--------------------------------");
-
         try {
             // Base64 디코딩
-            byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyStr);
+            byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyContent);
 
             // PKCS8 형식의 Private Key 생성
             PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
@@ -146,9 +149,10 @@ public class WorksAuth {
 
             return Jwts.builder()
                     .setIssuer(serviceAccount)
+                    .setSubject(serviceAccount)
                     .setIssuedAt(Date.from(now))
                     .setExpiration(Date.from(expiration))
-                    .signWith(privateKey, SignatureAlgorithm.RS256)
+                    .signWith(SignatureAlgorithm.RS256, privateKey)
                     .compact();
         } catch (IllegalArgumentException e) {
             Logger.println("Base64 decoding error. Please check the private key format.");
