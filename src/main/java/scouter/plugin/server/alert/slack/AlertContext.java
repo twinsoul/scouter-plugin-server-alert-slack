@@ -33,6 +33,10 @@ public class AlertContext {
                 : null;
     }
 
+    public boolean isErrorPattern() {
+        return alertPattern != null && alertPattern.endsWith("_error");
+    }
+
     public static class Builder {
         private String alertPattern;
         private String objName;

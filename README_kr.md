@@ -1,7 +1,11 @@
-# Scouter Plugin Server Alert Slack
+# Scouter Plugin Server Alert Messenger
 
 ## 소개
-이 플러그인은 Scouter 서버의 알림을 Slack으로 전송하는 기능을 제공합니다.
+이 플러그인은 Scouter 서버의 알림을 다양한 메신저로 전송하는 기능을 제공합니다.
+
+## 지원하는 메신저
+- Slack
+- Naver Works
 
 ## 주요 기능
 - 다양한 유형의 알림 지원 (스레드 수, 응답시간, 에러, GC 시간)
@@ -50,8 +54,11 @@
 
 ## 설정 방법
 
-### 기본 설정
+### Slack 설정
 ```properties
+# Slack 알림 활성화
+ext_plugin_slack_send_alert=true
+
 # Slack 웹훅 URL 설정
 ext_plugin_slack_webhook_url=https://hooks.slack.com/services/...
 
@@ -62,12 +69,68 @@ ext_plugin_slack_channel=#monitoring
 ext_plugin_slack_botName=Scouter
 ```
 
-### 모니터링 그룹 설정
+### Naver Works 설정
 ```properties
-# 모니터링 그룹별 채널 설정
-ext_plugin_slack_channel_group_a=#group-a-monitoring
-ext_plugin_slack_channel_group_b=#group-b-monitoring
+# Works 알림 활성화
+ext_plugin_works_send_alert=true
+
+# Works 앱 설정
+ext_plugin_works_client_id=your-client-id
+ext_plugin_works_client_secret=your-client-secret
+
+# Works 서비스 계정 설정
+ext_plugin_works_service_account=your-service-account@your-domain
+ext_plugin_works_private_key=your-private-key
+
+# Bot 설정
+ext_plugin_works_bot_id=your-bot-id
+ext_plugin_works_channel_id=your-channel-id
+
+# 알림 레벨 설정 (0: INFO, 1: WARN, 2: ERROR, 3: FATAL)
+ext_plugin_works_level=0
+
+# 디버그 모드 활성화
+ext_plugin_works_debug=false
+
+# API 엔드포인트 커스터마이징 (선택사항)
+# ext_plugin_works_api_endpoint=https://your-custom-endpoint
 ```
+
+## Works Bot 설정 방법
+
+1. Works 개발자 콘솔에서 앱 등록
+   - [Works 개발자 콘솔](https://developers.worksmobile.com/kr/docs/auth) 접속
+   - 새 앱 등록
+   - Client ID와 Client Secret 발급
+
+2. 서비스 계정 생성
+   - Works 관리자 콘솔에서 서비스 계정 생성
+   - 서비스 계정 이메일 주소 확인
+   - Private Key 생성 및 저장
+
+3. Bot 생성 및 설정
+   - Works 개발자 콘솔에서 Bot 생성
+   - Bot ID 확인
+   - Bot의 권한 설정 (메시지 발송 권한 필요)
+
+4. Bot을 채널에 초대
+   - Works 메신저에서 알림을 받을 채널 생성
+   - Bot을 채널에 초대
+   - 채널 ID 확인
+
+5. Scouter 서버 설정
+   - scouter.conf 파일에 위 설정 추가
+   - Client ID, Client Secret 입력
+   - 서비스 계정 정보 입력
+   - Bot ID, Channel ID 입력
+   - 서버 재시작
+
+## 주의사항
+1. Client Secret과 Private Key는 보안을 위해 외부에 노출되지 않도록 주의
+2. 서비스 계정의 권한이 적절히 설정되어 있는지 확인
+3. Bot이 채널에 초대되어 있고 메시지 발송 권한이 있는지 확인
+4. 알림 레벨 설정으로 불필요한 알림 필터링 가능
+5. 디버그 모드는 문제 해결 시에만 활성화 권장
 
 ## 알림 레벨별 특징
 
@@ -128,8 +191,3 @@ ext_plugin_slack_channel_group_b=#group-b-monitoring
 - Interval: 60s
 - History Count: 2
 ```
-
-## 주의사항
-1. Slack 웹훅 URL은 보안을 위해 외부에 노출되지 않도록 주의
-2. 알림 임계값 설정 시 서비스 특성 고려
-3. 알림 채널 설정 시 올바른 채널명 확인

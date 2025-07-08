@@ -163,7 +163,7 @@ public class SlackPlugin {
 							// NaverWorks 설정
 							String botId = groupConf.getValue("ext_plugin_works_bot_id", pack.objType);
 							String channelId = groupConf.getValue("ext_plugin_works_channel_id", pack.objType);
-							String userId = "biscuit_@woongjin.co.kr";
+							String userId = groupConf.getValue("ext_plugin_works_user_id", pack.objType);
 
 							assert webhookURL != null;
 
@@ -209,17 +209,20 @@ public class SlackPlugin {
 							post.setEntity(new StringEntity(payload, "utf-8"));
 
 							// send the post request
-							// try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
-							// HttpResponse response = client.execute(post);
+							try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
+								HttpResponse response = client.execute(post);
 
-							// if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-							// println("Slack message sent to [" + channel + "] successfully.");
-							// } else {
-							// println("Slack message sent failed. Verify below information.");
-							// }
-							// }
-
-							println("--------------------------------");
+								if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+									println("Slack message sent to [" + channel + "] successfully.");
+								} else {
+									println("Slack message sent failed. Verify below information.");
+								}
+							} catch (Exception e) {
+								Logger.println("[Error] : " + e.getMessage());
+								if (conf._trace) {
+									e.printStackTrace();
+								}
+							}
 
 							// Works 인증 객체 생성 및 토큰 가져오기
 							WorksAuth worksAuth = new WorksAuth(Configure.getInstance());

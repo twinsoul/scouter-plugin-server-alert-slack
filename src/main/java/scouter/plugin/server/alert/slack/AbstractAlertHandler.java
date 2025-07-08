@@ -36,8 +36,18 @@ public abstract class AbstractAlertHandler {
         if (diff < intervalMillis) {
             int historyCount = history.addCount();
             alertHistoryLinkedMap.put(context.alertPattern, history);
-            logStatus(context, historyCount, diff, "Not yet");
-            return null;
+
+            // 에러인 경우는 첫 이벤트라도 알림처리한다.
+            if (context.isErrorPattern()) {
+                byte alertLevel = determineAlertLevel(context, historyCount, diff);
+                String message = formatAlertMessage(context, historyCount);
+                logStatus(context, historyCount, diff, "Error alert (Not yet)");
+
+                return createAlertPack(context, alertLevel, message, historyCount);
+            } else {
+                logStatus(context, historyCount, diff, "Not yet");
+                return null;
+            }
         } else if (diff < intervalMillis * 2) {
             int historyCount = history.getHistoryCount();
             byte alertLevel = determineAlertLevel(context, historyCount, diff);
