@@ -1,19 +1,5 @@
 package scouter.plugin.server.alert.messenger.works;
 
-import com.google.gson.Gson;
-import com.google.gson.annotations.SerializedName;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
-import scouter.server.Configure;
-import scouter.server.Logger;
-
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -22,7 +8,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +21,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 
@@ -88,7 +74,6 @@ public class WorksAuth {
 
             // JWT 생성
             String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
-            String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
 
             // Access Token 요청
             // Map<String, String> params = new HashMap<>();
@@ -131,9 +116,11 @@ public class WorksAuth {
 
                     // return (String) responseMap.get("access_token");
 
+                    Logger.println("responseMap : " + responseMap.toString());
+
                     TokenResponse tokenResponse = new TokenResponse();
                     tokenResponse.accessToken = (String) responseMap.get("access_token");
-                    tokenResponse.expiresIn = (long) responseMap.get("expires_in");
+                    tokenResponse.expiresIn = Long.valueOf(responseMap.get("expires_in").toString());
 
                     this.accessToken = tokenResponse.accessToken;
                     this.tokenExpiration = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000);
@@ -149,8 +136,6 @@ public class WorksAuth {
             Logger.printStackTrace(e);
         }
     }
-
-    private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
 
     private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
         if (conf.getBoolean("ext_plugin_works_debug", false)) {
@@ -193,7 +178,7 @@ public class WorksAuth {
                     .setSubject(serviceAccount)
                     .setIssuedAt(Date.from(now))
                     .setExpiration(Date.from(expiration))
-                    .signWith(SignatureAlgorithm.RS256, privateKey)
+                    .signWith(privateKey, SignatureAlgorithm.RS256)
                     .compact();
         } catch (IllegalArgumentException e) {
             Logger.println("Base64 decoding error. Please check the private key format.");
