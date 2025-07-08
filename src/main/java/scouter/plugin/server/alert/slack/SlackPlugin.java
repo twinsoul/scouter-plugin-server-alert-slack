@@ -153,11 +153,17 @@ public class SlackPlugin {
 				new Thread() {
 					public void run() {
 						try {
+							// Slack 설정
 							String webhookURL = groupConf.getValue("ext_plugin_slack_webhook_url", pack.objType);
 							String channel = groupConf.getValue("ext_plugin_slack_channel", pack.objType);
 							String botName = groupConf.getValue("ext_plugin_slack_botName", pack.objType);
 							String iconURL = groupConf.getValue("ext_plugin_slack_icon_url", pack.objType);
 							String iconEmoji = groupConf.getValue("ext_plugin_slack_icon_emoji", pack.objType);
+
+							// NaverWorks 설정
+							String botId = groupConf.getValue("ext_plugin_works_bot_id", pack.objType);
+							String channelId = groupConf.getValue("ext_plugin_works_channel_id", pack.objType);
+							String userId = "biscuit_@woongjin.co.kr";
 
 							assert webhookURL != null;
 
@@ -198,24 +204,19 @@ public class SlackPlugin {
 							}
 
 							// slack 전송
-							// HttpPost post = new HttpPost(webhookURL);
-							// post.addHeader("Content-Type", "application/json");
-							// // charset set utf-8
-							// post.setEntity(new StringEntity(payload, "utf-8"));
+							HttpPost post = new HttpPost(webhookURL);
+							post.addHeader("Content-Type", "application/json");
+							post.setEntity(new StringEntity(payload, "utf-8"));
 
-							// CloseableHttpClient client = HttpClientBuilder.create().build();
-
-							// // send the post request
+							// send the post request
+							// try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
 							// HttpResponse response = client.execute(post);
 
 							// if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
 							// println("Slack message sent to [" + channel + "] successfully.");
 							// } else {
 							// println("Slack message sent failed. Verify below information.");
-							// println("[WebHookURL] : " + webhookURL);
-							// println("[Message] : " + payload);
-							// println("[----------------------Reason] : "
-							// + EntityUtils.toString(response.getEntity(), "UTF-8"));
+							// }
 							// }
 
 							println("--------------------------------");
@@ -223,8 +224,6 @@ public class SlackPlugin {
 							// Works 인증 객체 생성 및 토큰 가져오기
 							WorksAuth worksAuth = new WorksAuth(Configure.getInstance());
 							String accessToken = worksAuth.getAccessToken();
-
-							println("accessToken : " + accessToken);
 
 							// 메시지 생성
 							WorksBotMessage worksMessage = new WorksBotMessage();
@@ -236,41 +235,31 @@ public class SlackPlugin {
 							payload = gson.toJson(worksMessage);
 
 							// 디버그 로깅
-							if (conf.getBoolean("ext_plugin_works_debug", false)) {
-								Logger.println("Works Bot Payload: " + payload);
-							}
+							println("Works Bot Payload: " + payload);
 
 							// HTTP 요청 설정
-							String apiEndpoint = conf.getValue("ext_plugin_works_api_endpoint", "");
-
-							String botId = conf.getValue("ext_plugin_works_bot_id");
-							String channelId = conf.getValue("ext_plugin_works_channel_id");
-							String userId = "biscuit_@woongjin.co.kr";
-
 							String userMessageApiEndpoint = "https://www.worksapis.com/v1.0/bots/" + botId + "/users/"
 									+ userId + "/messages";
 
-							HttpPost post = new HttpPost(userMessageApiEndpoint);
-
+							post = new HttpPost(userMessageApiEndpoint);
 							post.addHeader("Content-Type", "application/json");
 							post.addHeader("Authorization", "Bearer " + accessToken);
 							post.setEntity(new StringEntity(payload, "utf-8"));
 
 							// HTTP 요청 실행
-							try (CloseableHttpClient client2 = HttpClientBuilder.create().build()) {
-								HttpResponse response = client2.execute(post);
+							try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
+								HttpResponse response = client.execute(post);
 
 								if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK ||
 										response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED) {
-									Logger.println("Works Bot message sent successfully.");
+									println("Works Bot message sent successfully.");
 								} else {
 									Logger.println("Works Bot message sending failed. Response: " +
 											EntityUtils.toString(response.getEntity(), "UTF-8"));
 								}
 							}
-
 						} catch (Exception e) {
-							println("[Error] : " + e.getMessage());
+							Logger.println("[Error] : " + e.getMessage());
 							if (conf._trace) {
 								e.printStackTrace();
 							}

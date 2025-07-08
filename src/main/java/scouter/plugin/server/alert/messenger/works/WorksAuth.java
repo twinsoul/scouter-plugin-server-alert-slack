@@ -22,7 +22,6 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 
 import io.jsonwebtoken.Jwts;
@@ -31,7 +30,7 @@ import scouter.server.Configure;
 import scouter.server.Logger;
 
 /**
- * Works API 인증 처리 클래스
+ * NaverWorks API 인증 처리 클래스
  */
 public class WorksAuth {
     private static final String AUTH_API_URL = "https://auth.worksmobile.com/oauth2/v2.0/token";
@@ -39,14 +38,12 @@ public class WorksAuth {
     private static final long TOKEN_REFRESH_THRESHOLD = 300; // 5분
 
     private final Configure conf;
-    private final Gson gson;
 
     private String accessToken;
     private long tokenExpiration;
 
     public WorksAuth(Configure conf) {
         this.conf = conf;
-        this.gson = new Gson();
     }
 
     /**
@@ -75,15 +72,7 @@ public class WorksAuth {
             // JWT 생성
             String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
 
-            // Access Token 요청
-            // Map<String, String> params = new HashMap<>();
-            // params.put("assertion", jwt);
-            // params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
-            // params.put("client_id", clientId);
-            // params.put("client_secret", clientSecret);
-            // params.put("scope", "bot bot.message bot.read");
-
-            // 요청 파라미터 설정
+            // access token 요청 파라미터 설정
             List<NameValuePair> params = new ArrayList<>();
             params.add(new BasicNameValuePair("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"));
             params.add(new BasicNameValuePair("client_id", clientId));
@@ -91,11 +80,7 @@ public class WorksAuth {
             params.add(new BasicNameValuePair("assertion", jwt));
             params.add(new BasicNameValuePair("scope", "bot bot.message bot.read"));
 
-            // String payload = gson.toJson(params);
-
-            if (conf.getBoolean("ext_plugin_works_debug", false)) {
-                Logger.println("Auth request payload: " + params);
-            }
+            println("Auth request payload: " + params);
 
             HttpPost post = new HttpPost(AUTH_API_URL);
             post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
@@ -105,18 +90,11 @@ public class WorksAuth {
                 HttpResponse response = client.execute(post);
                 String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 
-                if (conf.getBoolean("ext_plugin_works_debug", false)) {
-                    Logger.println("Auth response: " + responseBody);
-                }
+                println("Auth response: " + responseBody);
 
-                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK
-                        || response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED) {
+                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
                     ObjectMapper mapper = new ObjectMapper();
                     Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
-
-                    // return (String) responseMap.get("access_token");
-
-                    Logger.println("responseMap : " + responseMap.toString());
 
                     TokenResponse tokenResponse = new TokenResponse();
                     tokenResponse.accessToken = (String) responseMap.get("access_token");
@@ -125,9 +103,7 @@ public class WorksAuth {
                     this.accessToken = tokenResponse.accessToken;
                     this.tokenExpiration = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000);
 
-                    if (conf.getBoolean("ext_plugin_works_debug", false)) {
-                        Logger.println("Works access token refreshed successfully");
-                    }
+                    println("Works access token refreshed successfully");
                 } else {
                     Logger.println("Failed to refresh Works access token: " + responseBody);
                 }
@@ -138,36 +114,12 @@ public class WorksAuth {
     }
 
     private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
-        if (conf.getBoolean("ext_plugin_works_debug", false)) {
-            Logger.println("Private key path: " + privateKeyPath);
-        }
-
         // PEM 파일 읽기
-        String privateKeyContent = new String(java.nio.file.Files.readAllBytes(
-                java.nio.file.Paths.get(privateKeyPath)), StandardCharsets.UTF_8);
-
-        Logger.println("--------------------------------");
-        Logger.println(privateKeyContent);
-        Logger.println("--------------------------------");
-
-        if (conf.getBoolean("ext_plugin_works_debug", false)) {
-            Logger.println("Private key content loaded from file");
-        }
-
-        // Private Key 문자열 정리
-        privateKeyContent = privateKeyContent
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s+", ""); // 모든 공백 문자 제거
+        String privateKeyStr = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(privateKeyPath)),
+                StandardCharsets.UTF_8);
 
         try {
-            // Base64 디코딩
-            byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyContent);
-
-            // PKCS8 형식의 Private Key 생성
-            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+            PrivateKey privateKey = parsePrivateKey(privateKeyStr);
 
             Instant now = Instant.now();
             Instant expiration = now.plusSeconds(JWT_EXPIRATION);
@@ -191,14 +143,6 @@ public class WorksAuth {
         }
     }
 
-    private static class TokenResponse {
-        @SerializedName("access_token")
-        String accessToken;
-
-        @SerializedName("expires_in")
-        long expiresIn;
-    }
-
     private PrivateKey parsePrivateKey(String privateKeyString) throws Exception {
         // PEM 형식의 개인키에서 헤더/푸터 제거 및 Base64 디코딩
         String privateKeyPEM = privateKeyString
@@ -210,5 +154,20 @@ public class WorksAuth {
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
         return keyFactory.generatePrivate(spec);
+    }
+
+    private static class TokenResponse {
+        @SerializedName("access_token")
+        String accessToken;
+
+        @SerializedName("expires_in")
+        long expiresIn;
+    }
+
+    private void println(Object o) {
+        if (conf.getBoolean("ext_plugin_works_debug", false)) {
+            System.out.println(o);
+            Logger.println(o);
+        }
     }
 }
