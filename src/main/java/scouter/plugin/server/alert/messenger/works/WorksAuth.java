@@ -1,5 +1,19 @@
 package scouter.plugin.server.alert.messenger.works;
 
+import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
+import scouter.server.Configure;
+import scouter.server.Logger;
+
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -74,31 +88,33 @@ public class WorksAuth {
 
             // JWT 생성
             String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
+            String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
 
             // Access Token 요청
-            Map<String, String> params = new HashMap<>();
-            params.put("assertion", jwt);
-            params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
-            params.put("client_id", clientId);
-            params.put("client_secret", clientSecret);
-            params.put("scope", "bot bot.message bot.read");
+            // Map<String, String> params = new HashMap<>();
+            // params.put("assertion", jwt);
+            // params.put("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+            // params.put("client_id", clientId);
+            // params.put("client_secret", clientSecret);
+            // params.put("scope", "bot bot.message bot.read");
 
-            // 데이터 확인용도
-            String payload = gson.toJson(params);
+            // 요청 파라미터 설정
+            List<NameValuePair> params = new ArrayList<>();
+            params.add(new BasicNameValuePair("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"));
+            params.add(new BasicNameValuePair("client_id", clientId));
+            params.add(new BasicNameValuePair("client_secret", clientSecret));
+            params.add(new BasicNameValuePair("assertion", jwt));
+            params.add(new BasicNameValuePair("scope", "bot bot.message bot.read"));
+
+            // String payload = gson.toJson(params);
 
             if (conf.getBoolean("ext_plugin_works_debug", false)) {
-                Logger.println("Auth request payload: " + payload);
+                Logger.println("Auth request payload: " + params);
             }
 
             HttpPost post = new HttpPost(AUTH_API_URL);
             post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-
-            List<NameValuePair> urlParameters = new ArrayList<>();
-            for (Map.Entry<String, String> entry : params.entrySet()) {
-                urlParameters.add(new BasicNameValuePair(entry.getKey(), entry.getValue()));
-            }
-
-            post.setEntity(new UrlEncodedFormEntity(urlParameters, StandardCharsets.UTF_8));
+            post.setEntity(new UrlEncodedFormEntity(params));
 
             try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
                 HttpResponse response = client.execute(post);
@@ -108,8 +124,17 @@ public class WorksAuth {
                     Logger.println("Auth response: " + responseBody);
                 }
 
-                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-                    TokenResponse tokenResponse = gson.fromJson(responseBody, TokenResponse.class);
+                if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK
+                        || response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+                    // return (String) responseMap.get("access_token");
+
+                    TokenResponse tokenResponse = new TokenResponse();
+                    tokenResponse.accessToken = (String) responseMap.get("access_token");
+                    tokenResponse.expiresIn = (long) responseMap.get("expires_in");
+
                     this.accessToken = tokenResponse.accessToken;
                     this.tokenExpiration = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000);
 
@@ -124,6 +149,8 @@ public class WorksAuth {
             Logger.printStackTrace(e);
         }
     }
+
+    private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
 
     private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
         if (conf.getBoolean("ext_plugin_works_debug", false)) {
@@ -162,10 +189,11 @@ public class WorksAuth {
 
             return Jwts.builder()
                     .setIssuer(clientId)
+                    .setIssuer(clientId)
                     .setSubject(serviceAccount)
                     .setIssuedAt(Date.from(now))
                     .setExpiration(Date.from(expiration))
-                    .signWith(privateKey, SignatureAlgorithm.RS256)
+                    .signWith(SignatureAlgorithm.RS256, privateKey)
                     .compact();
         } catch (IllegalArgumentException e) {
             Logger.println("Base64 decoding error. Please check the private key format.");
@@ -184,5 +212,18 @@ public class WorksAuth {
 
         @SerializedName("expires_in")
         long expiresIn;
+    }
+
+    private PrivateKey parsePrivateKey(String privateKeyString) throws Exception {
+        // PEM 형식의 개인키에서 헤더/푸터 제거 및 Base64 디코딩
+        String privateKeyPEM = privateKeyString
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+
+        byte[] decoded = Base64.getDecoder().decode(privateKeyPEM);
+        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePrivate(spec);
     }
 }
