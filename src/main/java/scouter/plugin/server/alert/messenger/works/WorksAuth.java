@@ -1,28 +1,34 @@
 package scouter.plugin.server.alert.messenger.works;
 
-import com.google.gson.Gson;
-import com.google.gson.annotations.SerializedName;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
-import scouter.server.Configure;
-import scouter.server.Logger;
-
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
+
+import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import scouter.server.Configure;
+import scouter.server.Logger;
 
 /**
  * Works API 인증 처리 클래스
@@ -67,7 +73,7 @@ public class WorksAuth {
             String privateKeyPath = conf.getValue("ext_plugin_works_private_key");
 
             // JWT 생성
-            String jwt = createJWT(serviceAccount, privateKeyPath);
+            String jwt = createJWT(clientId, serviceAccount, privateKeyPath);
 
             // Access Token 요청
             Map<String, String> params = new HashMap<>();
@@ -77,6 +83,7 @@ public class WorksAuth {
             params.put("client_secret", clientSecret);
             params.put("scope", "bot bot.message bot.read");
 
+            // 데이터 확인용도
             String payload = gson.toJson(params);
 
             if (conf.getBoolean("ext_plugin_works_debug", false)) {
@@ -85,7 +92,13 @@ public class WorksAuth {
 
             HttpPost post = new HttpPost(AUTH_API_URL);
             post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-            post.setEntity(new StringEntity(payload, StandardCharsets.UTF_8));
+
+            List<NameValuePair> urlParameters = new ArrayList<>();
+            for (Map.Entry<String, String> entry : params.entrySet()) {
+                urlParameters.add(new BasicNameValuePair(entry.getKey(), entry.getValue()));
+            }
+
+            post.setEntity(new UrlEncodedFormEntity(urlParameters, StandardCharsets.UTF_8));
 
             try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
                 HttpResponse response = client.execute(post);
@@ -112,7 +125,7 @@ public class WorksAuth {
         }
     }
 
-    private String createJWT(String serviceAccount, String privateKeyPath) throws Exception {
+    private String createJWT(String clientId, String serviceAccount, String privateKeyPath) throws Exception {
         if (conf.getBoolean("ext_plugin_works_debug", false)) {
             Logger.println("Private key path: " + privateKeyPath);
         }
@@ -148,11 +161,11 @@ public class WorksAuth {
             Instant expiration = now.plusSeconds(JWT_EXPIRATION);
 
             return Jwts.builder()
-                    .setIssuer(serviceAccount)
+                    .setIssuer(clientId)
                     .setSubject(serviceAccount)
                     .setIssuedAt(Date.from(now))
                     .setExpiration(Date.from(expiration))
-                    .signWith(SignatureAlgorithm.RS256, privateKey)
+                    .signWith(privateKey, SignatureAlgorithm.RS256)
                     .compact();
         } catch (IllegalArgumentException e) {
             Logger.println("Base64 decoding error. Please check the private key format.");

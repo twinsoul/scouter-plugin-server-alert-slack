@@ -242,7 +242,16 @@ public class SlackPlugin {
 
 							// HTTP 요청 설정
 							String apiEndpoint = conf.getValue("ext_plugin_works_api_endpoint", "");
-							HttpPost post = new HttpPost(apiEndpoint);
+
+							String botId = conf.getValue("ext_plugin_works_bot_id");
+							String channelId = conf.getValue("ext_plugin_works_channel_id");
+							String userId = "biscuit_@woongjin.co.kr";
+
+							String userMessageApiEndpoint = "https://www.worksapis.com/v1.0/bots/" + botId + "/users/"
+									+ userId + "/messages";
+
+							HttpPost post = new HttpPost(userMessageApiEndpoint);
+
 							post.addHeader("Content-Type", "application/json");
 							post.addHeader("Authorization", "Bearer " + accessToken);
 							post.setEntity(new StringEntity(payload, "utf-8"));
