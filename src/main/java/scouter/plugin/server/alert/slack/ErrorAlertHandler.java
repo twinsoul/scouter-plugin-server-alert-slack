@@ -31,6 +31,9 @@ public class ErrorAlertHandler extends AbstractAlertHandler {
         String date = DateUtil.yyyymmdd(context.endTime);
         String service = TextRD.getString(date, TextTypes.SERVICE, context.service);
         String errorMsg = TextRD.getString(date, TextTypes.ERROR, Integer.parseInt(context.metricValue));
+        if (errorMsg != null && errorMsg.getBytes().length > 5000) {
+            errorMsg = errorMsg.substring(0, 1666) + "..."; // 한글 기준 약 5000bytes
+        }
 
         return String.format("%s - %s%s",
                 service,
@@ -40,8 +43,9 @@ public class ErrorAlertHandler extends AbstractAlertHandler {
 
     @Override
     protected String getAlertTitle(AlertContext context, int historyCount) {
-        String date = DateUtil.yyyymmdd(context.endTime);
-        return TextRD.getString(date, TextTypes.ERROR, Integer.parseInt(context.metricValue)); // title은 errorMsg 그대로 사용
+        String service = TextRD.getString(DateUtil.yyyymmdd(context.endTime), TextTypes.SERVICE, context.service);
+
+        return String.format("xlog error - %s", service);
     }
 
     @Override
