@@ -9,6 +9,125 @@ This plugin provides functionality to send Scouter server alerts to Slack channe
 - Alert history management
 - Slack channel configuration support per monitoring group
 
+## System Diagrams
+
+### Class Diagram
+```mermaid
+classDiagram
+    class SlackPlugin {
+        -Configure conf
+        -MonitoringGroupConfigure groupConf
+        -LinkedMap~String, AlertHistory~ alertHistoryLinkedMap
+        -ThreadCountAlertHandler threadCountHandler
+        -ElapsedTimeAlertHandler elapsedTimeHandler
+        -GCTimeAlertHandler gcTimeHandler
+        -ErrorAlertHandler errorHandler
+        +alert(AlertPack pack)
+        +object(ObjectPack pack)
+        +xlog(XLogPack pack)
+        +counter(PerfCounterPack pack)
+        -checkThreadCount()
+        -println(Object o)
+    }
+
+    class AbstractAlertHandler {
+        #LinkedMap alertHistoryMap
+        +handleAlert(AlertContext context)
+    }
+
+    class AlertContext {
+        -String alertPattern
+        -String objName
+        -String objType
+        -int interval
+        -String metricValue
+        -int threshold
+        -int objHash
+    }
+
+    class Message {
+        -String text
+        -String channel
+        -String username
+        -String icon_url
+        -String icon_emoji
+    }
+
+    AbstractAlertHandler <|-- ThreadCountAlertHandler
+    AbstractAlertHandler <|-- ElapsedTimeAlertHandler
+    AbstractAlertHandler <|-- GCTimeAlertHandler
+    AbstractAlertHandler <|-- ErrorAlertHandler
+    
+    SlackPlugin --> AbstractAlertHandler
+    SlackPlugin --> AlertContext
+    SlackPlugin --> Message
+```
+
+### Sequence Diagram
+```mermaid
+sequenceDiagram
+    participant Client
+    participant SlackPlugin
+    participant AlertHandler
+    participant Slack
+    participant NaverWorks
+
+    Client->>SlackPlugin: Event Triggered(alert/xlog/object/counter)
+    SlackPlugin->>SlackPlugin: Check Alert Conditions
+    
+    alt Alert Conditions Met
+        SlackPlugin->>AlertHandler: handleAlert(context)
+        AlertHandler-->>SlackPlugin: AlertPack
+        
+        par Send to Slack
+            SlackPlugin->>Slack: HTTP POST (webhook)
+            Slack-->>SlackPlugin: Response
+        and Send to NaverWorks
+            SlackPlugin->>NaverWorks: HTTP POST (API)
+            NaverWorks-->>SlackPlugin: Response
+        end
+    end
+```
+
+### Activity Diagram
+```mermaid
+flowchart TD
+    Start([Start]) --> EventCheck{Event Type?}
+    
+    EventCheck -->|Thread Count| TC[Check Thread Count]
+    EventCheck -->|XLog| XL[Process XLog Event]
+    EventCheck -->|Object| OBJ[Process Object State]
+    EventCheck -->|Counter| CNT[Process Counter Data]
+    
+    TC --> TCCheck{Exceeds<br/>Threshold?}
+    TCCheck -->|Yes| Alert
+    TCCheck -->|No| End
+    
+    XL --> XLCheck{Error or<br/>Elapsed Time<br/>Exceeded?}
+    XLCheck -->|Yes| Alert
+    XLCheck -->|No| End
+    
+    OBJ --> OBJCheck{State<br/>Changed?}
+    OBJCheck -->|Yes| Alert
+    OBJCheck -->|No| End
+    
+    CNT --> CNTCheck{GC Time<br/>Exceeded?}
+    CNTCheck -->|Yes| Alert
+    CNTCheck -->|No| End
+    
+    Alert[Create Alert] --> History[Check History]
+    History --> IntervalCheck{Resend<br/>Interval<br/>Exceeded?}
+    IntervalCheck -->|Yes| Send[Send Message]
+    IntervalCheck -->|No| End
+    
+    Send --> ParallelSend{Parallel Send}
+    ParallelSend -->|Slack| Slack[Send to Slack]
+    ParallelSend -->|NaverWorks| Works[Send to NaverWorks]
+    
+    Slack --> End([End])
+    Works --> End
+```
+
 ## System Architecture
 
 ### Core Components

@@ -13,6 +13,125 @@
 - 알림 히스토리 관리
 - Slack 채널별 알림 설정 지원
 
+## 시스템 다이어그램
+
+### 클래스 다이어그램
+```mermaid
+classDiagram
+    class SlackPlugin {
+        -Configure conf
+        -MonitoringGroupConfigure groupConf
+        -LinkedMap~String, AlertHistory~ alertHistoryLinkedMap
+        -ThreadCountAlertHandler threadCountHandler
+        -ElapsedTimeAlertHandler elapsedTimeHandler
+        -GCTimeAlertHandler gcTimeHandler
+        -ErrorAlertHandler errorHandler
+        +alert(AlertPack pack)
+        +object(ObjectPack pack)
+        +xlog(XLogPack pack)
+        +counter(PerfCounterPack pack)
+        -checkThreadCount()
+        -println(Object o)
+    }
+
+    class AbstractAlertHandler {
+        #LinkedMap alertHistoryMap
+        +handleAlert(AlertContext context)
+    }
+
+    class AlertContext {
+        -String alertPattern
+        -String objName
+        -String objType
+        -int interval
+        -String metricValue
+        -int threshold
+        -int objHash
+    }
+
+    class Message {
+        -String text
+        -String channel
+        -String username
+        -String icon_url
+        -String icon_emoji
+    }
+
+    AbstractAlertHandler <|-- ThreadCountAlertHandler
+    AbstractAlertHandler <|-- ElapsedTimeAlertHandler
+    AbstractAlertHandler <|-- GCTimeAlertHandler
+    AbstractAlertHandler <|-- ErrorAlertHandler
+    
+    SlackPlugin --> AbstractAlertHandler
+    SlackPlugin --> AlertContext
+    SlackPlugin --> Message
+```
+
+### 시퀀스 다이어그램
+```mermaid
+sequenceDiagram
+    participant Client
+    participant SlackPlugin
+    participant AlertHandler
+    participant Slack
+    participant NaverWorks
+
+    Client->>SlackPlugin: 이벤트 발생(alert/xlog/object/counter)
+    SlackPlugin->>SlackPlugin: 알림 조건 체크
+    
+    alt 알림 조건 만족
+        SlackPlugin->>AlertHandler: handleAlert(context)
+        AlertHandler-->>SlackPlugin: AlertPack
+        
+        par Slack 발송
+            SlackPlugin->>Slack: HTTP POST (webhook)
+            Slack-->>SlackPlugin: Response
+        and NaverWorks 발송
+            SlackPlugin->>NaverWorks: HTTP POST (API)
+            NaverWorks-->>SlackPlugin: Response
+        end
+    end
+```
+
+### 액티비티 다이어그램
+```mermaid
+flowchart TD
+    Start([시작]) --> EventCheck{이벤트 종류?}
+    
+    EventCheck -->|Thread Count| TC[Thread Count 체크]
+    EventCheck -->|XLog| XL[XLog 이벤트 처리]
+    EventCheck -->|Object| OBJ[Object 상태 처리]
+    EventCheck -->|Counter| CNT[Counter 데이터 처리]
+    
+    TC --> TCCheck{임계값 초과?}
+    TCCheck -->|Yes| Alert
+    TCCheck -->|No| End
+    
+    XL --> XLCheck{에러 또는<br/>응답시간 초과?}
+    XLCheck -->|Yes| Alert
+    XLCheck -->|No| End
+    
+    OBJ --> OBJCheck{상태 변경?}
+    OBJCheck -->|Yes| Alert
+    OBJCheck -->|No| End
+    
+    CNT --> CNTCheck{GC Time<br/>임계값 초과?}
+    CNTCheck -->|Yes| Alert
+    CNTCheck -->|No| End
+    
+    Alert[알림 생성] --> History[히스토리 체크]
+    History --> IntervalCheck{재발송<br/>간격 초과?}
+    IntervalCheck -->|Yes| Send[메시지 발송]
+    IntervalCheck -->|No| End
+    
+    Send --> ParallelSend{병렬 발송}
+    ParallelSend -->|Slack| Slack[Slack 발송]
+    ParallelSend -->|NaverWorks| Works[NaverWorks 발송]
+    
+    Slack --> End([종료])
+    Works --> End
+```
+
 ## 시스템 구조
 
 ### 핵심 컴포넌트
