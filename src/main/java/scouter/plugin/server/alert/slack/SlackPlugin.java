@@ -153,8 +153,15 @@ public class SlackPlugin {
 				new Thread() {
 					public void run() {
 						try {
+							// 개별 서비스 이름 추출
+							ObjectPack objectPack = AgentManager.getAgent(pack.objHash);
+							String objectName = objectPack.objName.substring(objectPack.objName.lastIndexOf("/") + 1);
+							println("objectName : " + objectName + ", objectPack.objName : " + objectPack.objName);
+
 							// Slack 설정
-							String webhookURL = groupConf.getValue("ext_plugin_slack_webhook_url", pack.objType);
+							String defaultWebhookURL = groupConf.getValue("ext_plugin_slack_webhook_url", pack.objType);
+							String webhookURL = groupConf.getValue("ext_plugin_slack_webhook_url." + objectName,
+									pack.objType, defaultWebhookURL);
 							String channel = groupConf.getValue("ext_plugin_slack_channel", pack.objType);
 							String botName = groupConf.getValue("ext_plugin_slack_botName", pack.objType);
 							String iconURL = groupConf.getValue("ext_plugin_slack_icon_url", pack.objType);
