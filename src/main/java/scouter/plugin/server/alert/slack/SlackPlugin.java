@@ -155,8 +155,13 @@ public class SlackPlugin {
 						try {
 							// 개별 서비스 이름 추출
 							ObjectPack objectPack = AgentManager.getAgent(pack.objHash);
+
 							String objectName = objectPack.objName.substring(objectPack.objName.lastIndexOf("/") + 1);
-							println("objectName : " + objectName + ", objectPack.objName : " + objectPack.objName);
+							String hostName = objectPack.objName.indexOf("/", 1) > 0
+									? objectPack.objName.substring(1, objectPack.objName.indexOf("/", 1))
+									: objectPack.objName.substring(1);
+							println("objectName : " + objectName + ", objectPack.objName : " + objectPack.objName
+									+ ", objectPack.objType : " + objectPack.objType + ", hostName : " + hostName);
 
 							// Slack 설정
 							String defaultWebhookURL = groupConf.getValue("ext_plugin_slack_webhook_url", pack.objType);
@@ -169,8 +174,14 @@ public class SlackPlugin {
 
 							// NaverWorks 설정
 							String botId = groupConf.getValue("ext_plugin_works_bot_id", pack.objType);
-							String channelId = groupConf.getValue("ext_plugin_works_channel_id", pack.objType);
+							String defaultChannelId = groupConf.getValue("ext_plugin_works_channel_id", pack.objType);
+							String hostChannelId = groupConf.getValue("ext_plugin_works_channel_id." + hostName,
+									pack.objType, defaultChannelId);
+							String channelId = groupConf.getValue("ext_plugin_works_channel_id." + objectName,
+									pack.objType, hostChannelId);
 							String userId = groupConf.getValue("ext_plugin_works_user_id", pack.objType);
+							println("channelId : " + channelId + ", hostChannelId : " + hostChannelId
+									+ ", defaultChannelId : " + defaultChannelId);
 
 							assert webhookURL != null;
 
@@ -251,7 +262,12 @@ public class SlackPlugin {
 							String userMessageApiEndpoint = "https://www.worksapis.com/v1.0/bots/" + botId + "/users/"
 									+ userId + "/messages";
 
-							post = new HttpPost(userMessageApiEndpoint);
+							String channelMessageApiEndpoint = "https://www.worksapis.com/v1.0/bots/" + botId
+									+ "/channels/" + channelId + "/messages";
+
+							// println("channelMessageApiEndpoint : " + channelMessageApiEndpoint);
+
+							post = new HttpPost(channelMessageApiEndpoint);
 							post.addHeader("Content-Type", "application/json");
 							post.addHeader("Authorization", "Bearer " + accessToken);
 							post.setEntity(new StringEntity(payload, "utf-8"));

@@ -215,6 +215,36 @@ ext_plugin_works_debug=false
 # ext_plugin_works_api_endpoint=https://your-custom-endpoint
 ```
 
+## 채널 설정 방법
+
+### 채널 ID 우선순위
+채널 ID는 다음 우선순위로 적용됩니다:
+1. 개별 서비스명 기반 채널 ID (`ext_plugin_works_channel_id.{serviceName}`)
+2. 호스트명 기반 채널 ID (`ext_plugin_works_channel_id.{hostName}`)
+3. 기본 채널 ID (`ext_plugin_works_channel_id`)
+
+예시:
+```properties
+# 기본 채널 ID
+ext_plugin_works_channel_id=default-channel-id
+
+# 호스트별 채널 ID
+ext_plugin_works_channel_id.tomcat1=tomcat1-channel-id
+ext_plugin_works_channel_id.tomcat2=tomcat2-channel-id
+
+# 서비스별 채널 ID
+ext_plugin_works_channel_id.order=order-service-channel-id
+ext_plugin_works_channel_id.payment=payment-service-channel-id
+```
+
+### 호스트명 추출
+- `/host/serviceName` 형식: host 부분이 호스트명으로 사용됨
+- `/host` 형식: host 전체가 호스트명으로 사용됨
+
+예시:
+- `/tomcat1/order` → hostName: "tomcat1"
+- `/tomcat2` → hostName: "tomcat2"
+
 ## Works Bot 설정 방법
 
 1. Works 개발자 콘솔에서 앱 등록

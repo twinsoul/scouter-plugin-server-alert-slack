@@ -80,7 +80,7 @@ public class WorksAuth {
             params.add(new BasicNameValuePair("assertion", jwt));
             params.add(new BasicNameValuePair("scope", "bot bot.message bot.read"));
 
-            println("Auth request payload: " + params);
+            // println("Auth request payload: " + params);
 
             HttpPost post = new HttpPost(AUTH_API_URL);
             post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
@@ -90,7 +90,7 @@ public class WorksAuth {
                 HttpResponse response = client.execute(post);
                 String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 
-                println("Auth response: " + responseBody);
+                // println("Auth response: " + responseBody);
 
                 if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
                     ObjectMapper mapper = new ObjectMapper();
