@@ -24,10 +24,18 @@ public abstract class AbstractAlertHandler {
         if (!alertHistoryLinkedMap.containsKey(context.alertPattern)) {
             alertHistoryLinkedMap.put(context.alertPattern, createHistory(System.currentTimeMillis()));
             logInitialStatus(context);
+
+            // 에러인 경우 첫 발생 시에는 즉시 알림
+            if (context.isErrorPattern()) {
+                byte alertLevel = determineAlertLevel(context, 1, 0);
+                String message = formatAlertMessage(context, 1);
+                logStatus(context, 1, 0, "First Error alert");
+                return createAlertPack(context, alertLevel, message, 1);
+            }
             return null;
         }
 
-        preProcessAlert(context); // gcTimeInterval 로깅 등을 위한 훅
+        preProcessAlert(context);
 
         AlertHistory history = alertHistoryLinkedMap.get(context.alertPattern);
         long diff = System.currentTimeMillis() - history.getLastModified();
@@ -36,18 +44,8 @@ public abstract class AbstractAlertHandler {
         if (diff < intervalMillis) {
             int historyCount = history.addCount();
             alertHistoryLinkedMap.put(context.alertPattern, history);
-
-            // 에러인 경우는 첫 이벤트라도 알림처리한다.
-            if (context.isErrorPattern()) {
-                byte alertLevel = determineAlertLevel(context, historyCount, diff);
-                String message = formatAlertMessage(context, historyCount);
-                logStatus(context, historyCount, diff, "Error alert (Not yet)");
-
-                return createAlertPack(context, alertLevel, message, historyCount);
-            } else {
-                logStatus(context, historyCount, diff, "Not yet");
-                return null;
-            }
+            logStatus(context, historyCount, diff, "Not yet");
+            return null;
         } else if (diff < intervalMillis * 2) {
             int historyCount = history.getHistoryCount();
             byte alertLevel = determineAlertLevel(context, historyCount, diff);
