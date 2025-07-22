@@ -249,8 +249,109 @@ public class SlackPlugin {
 							// 메시지 생성
 							WorksBotMessage worksMessage = new WorksBotMessage();
 							worksMessage.content = new WorksBotMessage.Content();
-							worksMessage.content.type = "text";
-							worksMessage.content.text = contents;
+
+							// 메시지 타입 결정 (기본값: text)
+							String messageType = groupConf.getValue("ext_plugin_works_message_type", pack.objType,
+									"text");
+
+							if ("flex".equalsIgnoreCase(messageType)) {
+								// Flex 메시지 생성
+								worksMessage.content.type = "flex";
+								worksMessage.content.altText = String.format("[ALERT] %s", title);
+
+								WorksBotMessage.FlexContent flexContent = new WorksBotMessage.FlexContent();
+
+								// 헤더 설정
+								flexContent.header = new WorksBotMessage.Box();
+								flexContent.header.type = "box";
+								flexContent.header.layout = "vertical";
+								flexContent.header.backgroundColor = "#0070C0";
+								flexContent.header.contents = new WorksBotMessage.BoxContent[1];
+
+								WorksBotMessage.BoxContent headerText = new WorksBotMessage.BoxContent();
+								headerText.type = "text";
+								headerText.text = "모니터링 알람(Alert)";
+								headerText.weight = "bold";
+								headerText.color = "#FFFFFF";
+								headerText.size = "md";
+
+								flexContent.header.contents[0] = headerText;
+
+								// 바디 설정
+								flexContent.body = new WorksBotMessage.Box();
+								flexContent.body.type = "box";
+								flexContent.body.layout = "vertical";
+								flexContent.body.spacing = "sm";
+								flexContent.body.contents = new WorksBotMessage.BoxContent[5];
+
+								// TYPE
+								WorksBotMessage.BoxContent typeContent = new WorksBotMessage.BoxContent();
+								typeContent.type = "text";
+								typeContent.text = String.format("[TYPE] : %s", pack.objType.toUpperCase());
+								typeContent.wrap = true;
+								typeContent.size = "sm";
+								flexContent.body.contents[0] = typeContent;
+
+								// NAME
+								WorksBotMessage.BoxContent nameContent = new WorksBotMessage.BoxContent();
+								nameContent.type = "text";
+								nameContent.text = String.format("[NAME] : %s", name);
+								nameContent.wrap = true;
+								nameContent.size = "sm";
+								flexContent.body.contents[1] = nameContent;
+
+								// LEVEL
+								WorksBotMessage.BoxContent levelContent = new WorksBotMessage.BoxContent();
+								levelContent.type = "text";
+								levelContent.text = String.format("[LEVEL] : %s", AlertLevel.getName(pack.level));
+								levelContent.wrap = true;
+								levelContent.size = "sm";
+								flexContent.body.contents[2] = levelContent;
+
+								// TITLE
+								WorksBotMessage.BoxContent titleContent = new WorksBotMessage.BoxContent();
+								titleContent.type = "text";
+								titleContent.text = String.format("[TITLE] : %s", title);
+								titleContent.wrap = true;
+								titleContent.size = "sm";
+								flexContent.body.contents[3] = titleContent;
+
+								// MESSAGE
+								WorksBotMessage.BoxContent messageContent = new WorksBotMessage.BoxContent();
+								messageContent.type = "text";
+								messageContent.text = String.format("[MESSAGE] : %s", msg);
+								messageContent.wrap = true;
+								messageContent.size = "sm";
+								flexContent.body.contents[4] = messageContent;
+
+								// 푸터 설정
+								flexContent.footer = new WorksBotMessage.Box();
+								flexContent.footer.type = "box";
+								flexContent.footer.layout = "vertical";
+								flexContent.footer.backgroundColor = "#0070C0";
+								flexContent.footer.contents = new WorksBotMessage.BoxContent[1];
+
+								WorksBotMessage.BoxContent footerText = new WorksBotMessage.BoxContent();
+								footerText.type = "text";
+								footerText.text = "확인 바랍니다.";
+								footerText.align = "center";
+								footerText.color = "#FFFFFF";
+								footerText.size = "sm";
+
+								flexContent.footer.contents[0] = footerText;
+
+								worksMessage.content.contents = flexContent;
+							} else {
+								// Text 메시지 생성
+								worksMessage.content.type = "text";
+								worksMessage.content.text = String.format(
+										"[TYPE] : %s\n[NAME] : %s\n[LEVEL] : %s\n[TITLE] : %s\n[MESSAGE] : %s",
+										pack.objType.toUpperCase(),
+										name,
+										AlertLevel.getName(pack.level),
+										title,
+										msg);
+							}
 
 							Gson gson = new Gson();
 							payload = gson.toJson(worksMessage);
