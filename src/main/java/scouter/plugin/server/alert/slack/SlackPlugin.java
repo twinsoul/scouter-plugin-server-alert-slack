@@ -265,7 +265,7 @@ public class SlackPlugin {
 								flexContent.header = new WorksBotMessage.Box();
 								flexContent.header.type = "box";
 								flexContent.header.layout = "vertical";
-								flexContent.header.backgroundColor = "#0070C0";
+								flexContent.header.backgroundColor = "#D32F2F";
 								flexContent.header.contents = new WorksBotMessage.BoxContent[1];
 
 								WorksBotMessage.BoxContent headerText = new WorksBotMessage.BoxContent();
