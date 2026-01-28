@@ -11,7 +11,11 @@ This plugin provides functionality to send Scouter server alerts to Slack channe
 
 ## System Diagrams
 
+![System Architecture Diagram](architecture_diagram.png)
+
 ### Class Diagram
+
+![Class Diagram](class_diagram.png)
 ```mermaid
 classDiagram
     class SlackPlugin {
@@ -90,6 +94,8 @@ sequenceDiagram
 ```
 
 ### Activity Diagram
+
+![Activity Diagram](activity_diagram.png)
 ```mermaid
 flowchart TD
     Start([Start]) --> EventCheck{Event Type?}

@@ -15,7 +15,12 @@
 
 ## 시스템 다이어그램
 
+![System Architecture Diagram](architecture_diagram.png)
+
 ### 클래스 다이어그램
+
+![Class Diagram](class_diagram.png)
+
 ```mermaid
 classDiagram
     class SlackPlugin {
@@ -94,6 +99,9 @@ sequenceDiagram
 ```
 
 ### 액티비티 다이어그램
+
+![Activity Diagram](activity_diagram.png)
+
 ```mermaid
 flowchart TD
     Start([시작]) --> EventCheck{이벤트 종류?}
